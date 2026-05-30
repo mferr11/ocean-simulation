@@ -6,13 +6,9 @@ import pyrr
 from PIL import Image
 
 from ocean.parameters import (
-    CHOPPINESS,
-    FOAM_THRESHOLD,
-    GRID_RESOLUTION,
-    GRID_SIZE,
-    HEIGHT_SCALE,
-    WIND_DIRECTION_DEG,
-    WIND_SPEED,
+    CAMERA_EYE, CHOPPINESS, DEEP_COLOUR, DEPTH_SCALE,
+    FOAM_THRESHOLD, GRID_RESOLUTION, GRID_SIZE, HEIGHT_SCALE,
+    SHALLOW_COLOUR, SUN_DIR, WIND_DIRECTION_DEG, WIND_SPEED,
 )
 
 
@@ -107,27 +103,48 @@ def test_mesh(width=800, height=600):
     print("Mesh render saved")
 
 
-def test_textures(width=800, height=600):
+def test_textures(width=1024, height=1024):
+    from ocean.parameters import default_params
+    params = default_params()
+    image = render(params, width, height)
+    os.makedirs('images', exist_ok=True)
+    image.save('images/test_textures.png')
+    print("Texture render saved")
+
+def run_ocean_pipeline(params):
     from ocean.simulation import compute_oscillation_rates, compute_surface_fields, time_evolve
     from ocean.spectrum import generate_initial_amplitudes, make_spatial_frequency_grid, phillips_spectrum
+
+    freq_x, freq_y, magnitude = make_spatial_frequency_grid(
+        params['grid_resolution'], params['grid_size']
+    )
+    wave_energy = phillips_spectrum(
+        freq_x, freq_y, magnitude, params['wind_speed'], params['wind_direction_deg']
+    )
+    initial_amplitudes, initial_amplitudes_mirror = generate_initial_amplitudes(wave_energy)
+    oscillation_rate = compute_oscillation_rates(magnitude)
+    freq_amplitudes = time_evolve(
+        initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t=params['time']
+    )
+    wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, _ = \
+        compute_surface_fields(
+            freq_amplitudes, freq_x, freq_y, magnitude,
+            params['foam_threshold'], params['choppiness'], params['height_scale']
+        )
+    return wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask
+
+
+def render(params, width=1024, height=1024):
     from rendering.mesh import create_grid_mesh
     from rendering.textures import upload_all_textures
 
-    # Phase 1 pipeline
-    freq_x, freq_y, magnitude = make_spatial_frequency_grid(GRID_RESOLUTION, GRID_SIZE)
-    wave_energy = phillips_spectrum(freq_x, freq_y, magnitude, WIND_SPEED, WIND_DIRECTION_DEG)
-    initial_amplitudes, initial_amplitudes_mirror = generate_initial_amplitudes(wave_energy)
-    oscillation_rate = compute_oscillation_rates(magnitude)
-    freq_amplitudes = time_evolve(initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t=0.0)
-    wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, _ = \
-        compute_surface_fields(freq_amplitudes, freq_x, freq_y, magnitude, FOAM_THRESHOLD)
-
-    print(f"wave_height min: {wave_height.min():.4f}, max: {wave_height.max():.4f}")
+    wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask = \
+        run_ocean_pipeline(params)
 
     ctx = create_context()
     fbo = create_framebuffer(ctx, width, height)
     program = load_shaders(ctx)
-    vbo, ibo = create_grid_mesh(ctx, grid_resolution=GRID_RESOLUTION)
+    vbo, ibo = create_grid_mesh(ctx, grid_resolution=params['grid_resolution'])
     vao = ctx.vertex_array(program, [(vbo, '2f', 'in_uv')], ibo)
 
     textures = upload_all_textures(
@@ -135,25 +152,30 @@ def test_textures(width=800, height=600):
     )
     textures['height'].use(location=0)
     textures['sideways_shift'].use(location=1)
+    textures['surface_tilt'].use(location=2)
+    textures['foam_mask'].use(location=3)
     program['u_height'].value = 0
     program['u_sideways_shift'].value = 1
+    program['u_surface_tilt'].value = 2
+    program['u_foam_mask'].value = 3
 
-    view, projection = create_camera_matrices(width, height)
+    view, projection = create_camera_matrices(width, height, eye=params['camera_eye'])
 
     fbo.use()
     ctx.clear(0.05, 0.05, 0.05)
     ctx.enable(moderngl.DEPTH_TEST)
     program['u_view'].write(view.astype('f4').tobytes())
     program['u_projection'].write(projection.astype('f4').tobytes())
-    program['u_grid_size'].value = (GRID_SIZE, GRID_SIZE)
-    program['u_choppiness'].value = CHOPPINESS
-    program['u_height_scale'].value = HEIGHT_SCALE
+    program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
+    program['u_height_scale'].value = params['height_scale']
+    program['u_camera_pos'].value = params['camera_eye']
+    program['u_sun_dir'].value = params['sun_dir']
+    program['u_deep_colour'].value = params['deep_colour']
+    program['u_shallow_colour'].value = params['shallow_colour']
+    program['u_depth_scale'].value = params['depth_scale']
     vao.render()
 
-    image = read_framebuffer(fbo, width, height)
-    os.makedirs('images', exist_ok=True)
-    image.save('images/test_textures.png')
-    print("Texture render saved")
+    return read_framebuffer(fbo, width, height)
 
 
 if __name__ == '__main__':
