@@ -48,7 +48,7 @@ def load_shaders(ctx):
 
 # --- Camera ---
 
-def create_camera_matrices(width, height, eye=(0, 300, 400)):
+def create_camera_matrices(width, height, eye=(600, 250, 600)):
     view = pyrr.matrix44.create_look_at(
         eye=np.array(eye, dtype=np.float32),
         target=np.array([0, 0, 0], dtype=np.float32),
@@ -79,7 +79,7 @@ def test_shaders():
     print(f"Shaders loaded — uniforms: {list(program)}")
 
 
-def test_mesh(width=800, height=600):
+def test_mesh(width=1024, height=1024):
     from rendering.mesh import create_grid_mesh
 
     ctx = create_context()
@@ -180,3 +180,4 @@ def render(params, width=1024, height=1024):
 
 if __name__ == '__main__':
     test_textures()
+    test_mesh()
