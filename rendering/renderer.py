@@ -122,7 +122,7 @@ def run_ocean_pipeline(params):
         freq_x, freq_y, magnitude, params['wind_speed'], params['wind_direction_deg']
     )
     initial_amplitudes, initial_amplitudes_mirror = generate_initial_amplitudes(wave_energy)
-    oscillation_rate = compute_oscillation_rates(magnitude)
+    oscillation_rate = compute_oscillation_rates(magnitude, params['loop_period'])
     freq_amplitudes = time_evolve(
         initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t=params['time']
     )

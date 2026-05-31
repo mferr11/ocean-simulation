@@ -2,9 +2,13 @@ import numpy as np
 from ocean.parameters import G
 
 
-def compute_oscillation_rates(magnitude):
-    oscillation_rate = np.sqrt(G * np.where(magnitude == 0, 0.0, magnitude))
-    return oscillation_rate
+def compute_oscillation_rates(magnitude, loop_period=20.0):
+    import math
+    raw_rate = np.sqrt(G * np.where(magnitude == 0, 0.0, magnitude))
+    base_frequency = 2 * math.pi / loop_period
+    # Snap each rate to nearest multiple of base_frequency
+    snapped_rate = np.round(raw_rate / base_frequency) * base_frequency
+    return snapped_rate
 
 
 def time_evolve(initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t):
