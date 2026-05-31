@@ -33,16 +33,16 @@ def render_animation(params, fps=24, output_dir='images/frames', video_path='ima
         if progress_callback:
             progress_callback(frame_index + 1, total_frames, elapsed)
 
-    stitch_video(output_dir, video_path, fps)
+    stitch_video(output_dir, video_path, fps, total_frames)
     return video_path
 
 
-def stitch_video(frame_dir, video_path, fps):
+def stitch_video(frame_dir, video_path, fps, total_frames):
     try:
         import imageio.v2 as imageio
         import glob
 
-        frame_files = sorted(glob.glob(os.path.join(frame_dir, 'frame_*.png')))
+        frame_files = sorted(glob.glob(os.path.join(frame_dir, 'frame_*.png')))[:total_frames]
         print(f"Stitching {len(frame_files)} frames into {video_path}...")
 
         writer = imageio.get_writer(video_path, fps=fps, codec='libx264', quality=8)
