@@ -8,12 +8,41 @@ from ocean.parameters import default_params
 from rendering.renderer import render
 from ui.controls import OceanControls
 
+_BG     = '#1e1e2e'
+_FG     = '#cdd6f4'
+_ACCENT = '#89b4fa'
+_MUTED  = '#6c7086'
+_FONT   = 'Segoe UI'
+
+
+def _configure_style():
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure('.', background=_BG, foreground=_FG, font=(_FONT, 9))
+    style.configure('TScale',
+        background=_BG, troughcolor='#313244',
+        sliderlength=14, sliderrelief='flat',
+    )
+    style.map('TScale', background=[('active', _BG)])
+    style.configure('TSeparator', background='#313244')
+    style.configure('TButton',
+        background='#313244', foreground=_FG,
+        relief='flat', padding=4,
+    )
+    style.map('TButton',
+        background=[('active', '#45475a')],
+        foreground=[('active', _FG)],
+    )
+
 
 class OceanApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Ocean Renderer")
         self.resizable(False, False)
+        self.configure(bg=_BG)
+
+        _configure_style()
 
         self.params = default_params()
         self.render_image = None
@@ -23,33 +52,69 @@ class OceanApp(tk.Tk):
 
     def _build(self):
         # Left panel — controls
-        left = tk.Frame(self, padx=10, pady=10)
+        left = tk.Frame(self, bg=_BG, padx=8, pady=10)
         left.grid(row=0, column=0, sticky='ns')
+
+        tk.Label(left, text="Ocean Renderer", font=(_FONT, 13, 'bold'),
+                 fg=_ACCENT, bg=_BG).pack(anchor='w', pady=(0, 6))
 
         self.controls = OceanControls(left, self.params)
         self.controls.pack()
 
-        ttk.Separator(left, orient='horizontal').pack(fill='x', pady=10)
+        ttk.Separator(left, orient='horizontal').pack(fill='x', pady=8)
+
+        # FPS row
+        fps_frame = tk.Frame(left, bg=_BG)
+        fps_frame.pack(fill='x', pady=(0, 8))
+        tk.Label(fps_frame, text="Animation FPS", anchor='w', width=16,
+                 bg=_BG, fg=_FG, font=(_FONT, 9)).pack(side='left')
+        self.fps_var = tk.IntVar(value=24)
+        fps_fmt = tk.StringVar(value='24')
+
+        def _fps_update(val):
+            v = round(float(val))
+            self.fps_var.set(v)
+            fps_fmt.set(str(v))
+
+        ttk.Scale(
+            fps_frame, from_=1, to=60, variable=self.fps_var,
+            orient='horizontal', length=150,
+            command=_fps_update,
+        ).pack(side='left', padx=6)
+        tk.Label(fps_frame, textvariable=fps_fmt, width=4, anchor='w',
+                 bg=_BG, fg=_ACCENT, font=(_FONT, 9, 'bold')).pack(side='left')
+
+        # Action buttons
+        btn = dict(relief='flat', fg='white', cursor='hand2',
+                   bd=0, highlightthickness=0)
 
         self.render_button = tk.Button(
             left, text="Render", command=self._on_render,
-            bg='#1a6fad', fg='white', font=('Helvetica', 11, 'bold'),
-            padx=12, pady=6, relief='flat', cursor='hand2'
+            bg='#1a6fad', activebackground='#155d96',
+            font=(_FONT, 11, 'bold'), pady=7, **btn,
         )
-        self.render_button.pack(fill='x')
+        self.render_button.pack(fill='x', pady=(0, 4))
 
         self.save_button = tk.Button(
             left, text="Save Image", command=self._on_save,
-            bg='#2e7d32', fg='white', font=('Helvetica', 10),
-            padx=12, pady=4, relief='flat', cursor='hand2',
-            state='disabled'
+            bg='#2e7d32', activebackground='#256027',
+            font=(_FONT, 9), pady=5, state='disabled', **btn,
         )
-        self.save_button.pack(fill='x', pady=(6, 0))
+        self.save_button.pack(fill='x', pady=(0, 4))
 
-        self.status_label = tk.Label(left, text="Ready", fg='gray', font=('Helvetica', 9))
-        self.status_label.pack(pady=(6, 0))
+        self.animate_button = tk.Button(
+            left, text="Render Animation", command=self._on_animate,
+            bg='#0097a7', activebackground='#00838f',
+            font=(_FONT, 9), pady=5, **btn,
+        )
+        self.animate_button.pack(fill='x')
 
-        self.time_label = tk.Label(left, text="", fg='gray', font=('Helvetica', 9))
+        # Status area
+        self.status_label = tk.Label(left, text="Ready", fg=_MUTED,
+                                     font=(_FONT, 9), bg=_BG)
+        self.status_label.pack(pady=(8, 0))
+        self.time_label = tk.Label(left, text="", fg=_MUTED,
+                                   font=(_FONT, 8), bg=_BG)
         self.time_label.pack()
 
         # Right panel — render output
@@ -73,7 +138,7 @@ class OceanApp(tk.Tk):
 
     def _on_render(self):
         self.render_button.configure(state='disabled', text='Rendering...')
-        self.status_label.configure(text='Running FFT pipeline...', fg='orange')
+        self.status_label.configure(text='Running FFT pipeline...', fg='#fab387')
         self.time_label.configure(text='')
         self.update()
 
@@ -85,12 +150,12 @@ class OceanApp(tk.Tk):
 
             self.last_image = image
             self._display_image(image)
-            self.status_label.configure(text='Done', fg='green')
-            self.time_label.configure(text=f'Render time: {elapsed:.2f}s', fg='gray')
+            self.status_label.configure(text='Done', fg='#a6e3a1')
+            self.time_label.configure(text=f'Render time: {elapsed:.2f}s', fg=_MUTED)
             self.save_button.configure(state='normal')
 
         except Exception as e:
-            self.status_label.configure(text=f'Error: {e}', fg='red')
+            self.status_label.configure(text=f'Error: {e}', fg='#f38ba8')
             raise
         finally:
             self.render_button.configure(state='normal', text='Render')
@@ -108,7 +173,63 @@ class OceanApp(tk.Tk):
             f"t{p['time']:.1f}.png"
         )
         self.last_image.save(filename)
-        self.status_label.configure(text=f'Saved: {filename}', fg='green')
+        self.status_label.configure(text=f'Saved: {filename}', fg='#a6e3a1')
+
+    def _load_latest_frame(self, frame_index):
+        from PIL import Image
+        frame_path = f'images/frames/frame_{frame_index - 1:04d}.png'
+        if os.path.exists(frame_path):
+            image = Image.open(frame_path)
+            self._display_image(image)
+
+    def _on_animate(self):
+        from rendering.animation import render_animation
+
+        self.animate_button.configure(state='disabled', text='Rendering...')
+        self.render_button.configure(state='disabled')
+        self.save_button.configure(state='disabled')
+        self.status_label.configure(text='Rendering animation...', fg='#fab387')
+        self.update()
+
+        params = self.controls.get_params()
+        fps = self.fps_var.get()
+
+        def progress(frame, total, frame_time):
+            remaining = (total - frame) * frame_time
+            self.status_label.configure(
+                text=f'Frame {frame}/{total} — ~{remaining:.0f}s remaining',
+                fg='#fab387',
+            )
+            self.after(0, self._load_latest_frame, frame)
+            self.update()
+
+        try:
+            p = params
+            os.makedirs('videos', exist_ok=True)
+            video_path = (
+                f"videos/ocean_"
+                f"wind{p['wind_speed']:.0f}_"
+                f"dir{p['wind_direction_deg']:.0f}_"
+                f"chop{p['choppiness']:.2f}_"
+                f"foam{p['foam_threshold']:.2f}_"
+                f"fps{fps}.mp4"
+            )
+
+            video_path = render_animation(
+                params,
+                fps=fps,
+                output_dir='images/frames',
+                video_path=video_path,
+                progress_callback=progress,
+            )
+            self.status_label.configure(text=f'Saved: {video_path}', fg='#a6e3a1')
+        except Exception as e:
+            self.status_label.configure(text=f'Error: {e}', fg='#f38ba8')
+            raise
+        finally:
+            self.animate_button.configure(state='normal', text='Render Animation')
+            self.render_button.configure(state='normal')
+            self.save_button.configure(state='normal')
 
     def run(self):
         self.mainloop()

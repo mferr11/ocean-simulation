@@ -129,7 +129,7 @@ def run_ocean_pipeline(params):
     wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, _ = \
         compute_surface_fields(
             freq_amplitudes, freq_x, freq_y, magnitude,
-            params['foam_threshold'], params['choppiness'], params['height_scale']
+            params['foam_threshold'], params['choppiness'], params['height_scale'], params['grid_resolution']
         )
     return wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask
 
