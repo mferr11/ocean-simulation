@@ -5,11 +5,6 @@ import numpy as np
 import pyrr
 from PIL import Image
 
-from ocean.parameters import (
-    CAMERA_EYE, CHOPPINESS, DEEP_COLOUR, DEPTH_SCALE,
-    FOAM_THRESHOLD, GRID_RESOLUTION, GRID_SIZE, HEIGHT_SCALE,
-    SHALLOW_COLOUR, SUN_DIR, WIND_DIRECTION_DEG, WIND_SPEED,
-)
 
 
 # --- Context and framebuffer ---
@@ -44,6 +39,46 @@ def load_shaders(ctx):
         frag_src = f.read()
     program = ctx.program(vertex_shader=vert_src, fragment_shader=frag_src)
     return program
+
+
+def load_shadow_shaders(ctx):
+    shader_dir = os.path.join(os.path.dirname(__file__), 'shaders')
+    with open(os.path.join(shader_dir, 'shadow.vert')) as f:
+        vert_src = f.read()
+    with open(os.path.join(shader_dir, 'shadow.frag')) as f:
+        frag_src = f.read()
+    program = ctx.program(vertex_shader=vert_src, fragment_shader=frag_src)
+    return program
+
+
+# --- Shadow map ---
+
+def create_shadow_map(ctx, shadow_size=2048):
+    shadow_tex = ctx.depth_texture((shadow_size, shadow_size))
+    shadow_fbo = ctx.framebuffer(depth_attachment=shadow_tex)
+    return shadow_tex, shadow_fbo
+
+
+def create_light_space_matrix(sun_dir, grid_size):
+    sun_dir = np.array(sun_dir, dtype=np.float32)
+    sun_dir = sun_dir / np.linalg.norm(sun_dir)
+    sun_pos = sun_dir * 2000.0
+
+    up = np.array([0, 1, 0], dtype=np.float32)
+    if abs(np.dot(sun_dir, up)) > 0.99:
+        up = np.array([0, 0, 1], dtype=np.float32)
+
+    light_view = pyrr.matrix44.create_look_at(
+        eye=sun_pos,
+        target=np.array([0, 0, 0], dtype=np.float32),
+        up=up,
+    )
+    half = grid_size * 0.65
+    light_proj = pyrr.matrix44.create_orthogonal_projection(
+        left=-half, right=half, bottom=-half, top=half,
+        near=0.1, far=4000.0, dtype=np.float32,
+    )
+    return (light_proj @ light_view).astype(np.float32)
 
 
 # --- Camera ---
@@ -145,19 +180,44 @@ def render(params, width=1024, height=1024):
     fbo = create_framebuffer(ctx, width, height)
     program = load_shaders(ctx)
     vbo, ibo = create_grid_mesh(ctx, grid_resolution=params['grid_resolution'])
-    vao = ctx.vertex_array(program, [(vbo, '2f', 'in_uv')], ibo)
 
     textures = upload_all_textures(
         ctx, wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask
     )
+
+    light_space = create_light_space_matrix(params['sun_dir'], params['grid_size'])
+
+    # --- Shadow pass ---
+    shadow_tex, shadow_fbo = create_shadow_map(ctx)
+    shadow_prog = load_shadow_shaders(ctx)
+    shadow_vao = ctx.vertex_array(shadow_prog, [(vbo, '2f', 'in_uv')], ibo)
+
+    textures['height'].use(location=0)
+    textures['sideways_shift'].use(location=1)
+    shadow_prog['u_height'].value = 0
+    shadow_prog['u_sideways_shift'].value = 1
+    shadow_prog['u_light_space'].write(light_space.tobytes())
+    shadow_prog['u_grid_size'].value = (params['grid_size'], params['grid_size'])
+    shadow_prog['u_height_scale'].value = params['height_scale']
+
+    shadow_fbo.use()
+    ctx.clear(depth=True)
+    ctx.enable(moderngl.DEPTH_TEST)
+    shadow_vao.render()
+
+    # --- Main pass ---
+    vao = ctx.vertex_array(program, [(vbo, '2f', 'in_uv')], ibo)
+
     textures['height'].use(location=0)
     textures['sideways_shift'].use(location=1)
     textures['surface_tilt'].use(location=2)
     textures['foam_mask'].use(location=3)
+    shadow_tex.use(location=4)
     program['u_height'].value = 0
     program['u_sideways_shift'].value = 1
     program['u_surface_tilt'].value = 2
     program['u_foam_mask'].value = 3
+    program['u_shadow_map'].value = 4
 
     view, projection = create_camera_matrices(width, height, eye=params['camera_eye'])
 
@@ -166,6 +226,7 @@ def render(params, width=1024, height=1024):
     ctx.enable(moderngl.DEPTH_TEST)
     program['u_view'].write(view.astype('f4').tobytes())
     program['u_projection'].write(projection.astype('f4').tobytes())
+    program['u_light_space'].write(light_space.tobytes())
     program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
     program['u_height_scale'].value = params['height_scale']
     program['u_camera_pos'].value = params['camera_eye']

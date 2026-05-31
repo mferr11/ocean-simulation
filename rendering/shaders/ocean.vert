@@ -8,6 +8,8 @@ uniform vec2 u_grid_size;
 uniform float u_choppiness;
 uniform float u_height_scale;
 
+uniform mat4 u_light_space;
+
 uniform sampler2D u_height;
 uniform sampler2D u_sideways_shift;
 uniform sampler2D u_surface_tilt;
@@ -15,6 +17,7 @@ uniform sampler2D u_surface_tilt;
 out vec2 frag_uv;
 out vec3 frag_normal;
 out vec3 frag_world_pos;
+out vec4 frag_light_space_pos;
 
 void main() {
     float h = texture(u_height, in_uv).r;
@@ -30,6 +33,7 @@ void main() {
     frag_normal = normalize(vec3(-tilt.x * u_height_scale, 1.0, -tilt.y * u_height_scale));
     frag_world_pos = world_pos;
     frag_uv = in_uv;
+    frag_light_space_pos = u_light_space * vec4(world_pos, 1.0);
 
     gl_Position = u_projection * u_view * vec4(world_pos, 1.0);
 }

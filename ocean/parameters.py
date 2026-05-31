@@ -15,7 +15,8 @@ CAMERA_EYE = (600, 250, 600)
 CAMERA_AZIMUTH_DEG = 135.0
 CAMERA_ELEVATION_DEG = 25.0
 CAMERA_DISTANCE = 850.0
-SUN_DIR = (1.0, 1.0, 0.5)
+SUN_AZIMUTH_DEG = 45.0
+SUN_ELEVATION_DEG = 45.0
 DEEP_COLOUR = (0.02, 0.15, 0.3)
 SHALLOW_COLOUR = (0.1, 0.4, 0.5)
 
@@ -27,6 +28,14 @@ def orbit_to_camera_eye(azimuth_deg, elevation_deg, distance):
     x = distance * math.cos(el) * math.sin(az)
     y = distance * math.sin(el)
     z = distance * math.cos(el) * math.cos(az)
+    return (x, y, z)
+
+def sun_dir_from_angles(azimuth_deg, elevation_deg):
+    az = math.radians(azimuth_deg)
+    el = math.radians(elevation_deg)
+    x = math.cos(el) * math.sin(az)
+    y = math.sin(el)
+    z = math.cos(el) * math.cos(az)
     return (x, y, z)
 
 def default_params():
@@ -45,7 +54,9 @@ def default_params():
         'camera_elevation_deg': CAMERA_ELEVATION_DEG,
         'camera_distance':    CAMERA_DISTANCE,
         'camera_eye':         orbit_to_camera_eye(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, CAMERA_DISTANCE),
-        'sun_dir':            SUN_DIR,
+        'sun_azimuth_deg':    SUN_AZIMUTH_DEG,
+        'sun_elevation_deg':  SUN_ELEVATION_DEG,
+        'sun_dir':            sun_dir_from_angles(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG),
         'deep_colour':        DEEP_COLOUR,
         'shallow_colour':     SHALLOW_COLOUR,
     }

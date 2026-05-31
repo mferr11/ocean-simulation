@@ -1,9 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
 
-from ocean.parameters import default_params, orbit_to_camera_eye
+from ocean.parameters import default_params, orbit_to_camera_eye, sun_dir_from_angles
 
 DEFAULT_CAMERA = (135.0, 25.0, 850.0)
+DEFAULT_SUN = (45.0, 45.0)
 
 SLIDER_STEPS = {
     'wind_speed':           0.5,
@@ -15,6 +16,8 @@ SLIDER_STEPS = {
     'camera_azimuth_deg':   1.0,
     'camera_elevation_deg': 1.0,
     'camera_distance':      10.0,
+    'sun_azimuth_deg':      1.0,
+    'sun_elevation_deg':    1.0,
 }
 
 _BG      = '#1e1e2e'
@@ -27,6 +30,7 @@ _FONT    = 'Segoe UI'
 _OCEAN_KEYS  = ['wind_speed', 'wind_direction_deg', 'choppiness',
                 'foam_threshold', 'height_scale', 'time']
 _COLOUR_KEYS = ['deep_colour', 'shallow_colour']
+_SUN_KEYS    = ['sun_azimuth_deg', 'sun_elevation_deg']
 
 
 def _rgb_to_hex(rgb_0_1):
@@ -77,14 +81,22 @@ class OceanControls(tk.Frame):
             ("Distance",            'camera_distance',      100.0, 3000.0,  10.0),
         ]
 
+        sun_sliders = [
+            ("Azimuth (°)",   'sun_azimuth_deg',   0.0,  360.0, 1.0),
+            ("Elevation (°)", 'sun_elevation_deg',  5.0,   89.0, 1.0),
+        ]
+
         row = self._build_slider_section("Ocean Parameters", ocean_sliders,
                                          start_row=0, reset_cmd=self._reset_ocean)
         self._build_separator(row)
         row = self._build_colour_section("Ocean Colour", colour_params,
                                          start_row=row + 1, reset_cmd=self._reset_colours)
         self._build_separator(row)
-        self._build_slider_section("Camera", camera_sliders,
-                                   start_row=row + 1, reset_cmd=self._reset_camera)
+        row = self._build_slider_section("Camera", camera_sliders,
+                                         start_row=row + 1, reset_cmd=self._reset_camera)
+        self._build_separator(row)
+        self._build_slider_section("Sun", sun_sliders,
+                                   start_row=row + 1, reset_cmd=self._reset_sun)
 
     def _section_header(self, row, title, reset_cmd=None):
         frame = tk.Frame(self, bg=_SECTION, padx=6, pady=4)
@@ -176,6 +188,7 @@ class OceanControls(tk.Frame):
         self.params[key] = snapped
         fmt_var.set(f"{snapped:.{decimals}f}")
         self._sync_camera()
+        self._sync_sun()
         if self.on_change:
             self.on_change(key)
 
@@ -205,6 +218,12 @@ class OceanControls(tk.Frame):
             self.vars['camera_distance'].get(),
         )
 
+    def _sync_sun(self):
+        self.params['sun_dir'] = sun_dir_from_angles(
+            self.vars['sun_azimuth_deg'].get(),
+            self.vars['sun_elevation_deg'].get(),
+        )
+
     def _reset_camera(self):
         az, el, dist = DEFAULT_CAMERA
         self.vars['camera_azimuth_deg'].set(az)
@@ -218,8 +237,19 @@ class OceanControls(tk.Frame):
                 fmt_var, dec = self.fmt_vars[key]
                 fmt_var.set(f"{val:.{dec}f}")
 
+    def _reset_sun(self):
+        az, el = DEFAULT_SUN
+        self.vars['sun_azimuth_deg'].set(az)
+        self.vars['sun_elevation_deg'].set(el)
+        self.params['sun_dir'] = sun_dir_from_angles(az, el)
+        for key, val in [('sun_azimuth_deg', az), ('sun_elevation_deg', el)]:
+            if key in self.fmt_vars:
+                fmt_var, dec = self.fmt_vars[key]
+                fmt_var.set(f"{val:.{dec}f}")
+
     def get_params(self):
         for key, var in self.vars.items():
             self.params[key] = var.get()
         self._sync_camera()
+        self._sync_sun()
         return self.params
