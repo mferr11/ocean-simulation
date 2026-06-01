@@ -41,6 +41,21 @@ def load_shaders(ctx):
     return program
 
 
+def load_sky_shaders(ctx):
+    shader_dir = os.path.join(os.path.dirname(__file__), 'shaders')
+    with open(os.path.join(shader_dir, 'sky.vert')) as f:
+        vert_src = f.read()
+    with open(os.path.join(shader_dir, 'sky.frag')) as f:
+        frag_src = f.read()
+    return ctx.program(vertex_shader=vert_src, fragment_shader=frag_src)
+
+
+def create_sky_quad(ctx):
+    verts = np.array([-1, -1, 1, -1, 1, 1, -1, 1], dtype=np.float32)
+    indices = np.array([0, 1, 2, 0, 2, 3], dtype=np.int32)
+    return ctx.buffer(verts.tobytes()), ctx.buffer(indices.tobytes())
+
+
 def load_shadow_shaders(ctx):
     shader_dir = os.path.join(os.path.dirname(__file__), 'shaders')
     with open(os.path.join(shader_dir, 'shadow.vert')) as f:
@@ -186,6 +201,7 @@ def render(params, width=1024, height=1024):
     )
 
     light_space = create_light_space_matrix(params['sun_dir'], params['grid_size'])
+    view, projection = create_camera_matrices(width, height, eye=params['camera_eye'])
 
     # --- Shadow pass ---
     shadow_tex, shadow_fbo = create_shadow_map(ctx)
@@ -219,10 +235,20 @@ def render(params, width=1024, height=1024):
     program['u_foam_mask'].value = 3
     program['u_shadow_map'].value = 4
 
-    view, projection = create_camera_matrices(width, height, eye=params['camera_eye'])
-
     fbo.use()
-    ctx.clear(0.05, 0.05, 0.05)
+    ctx.clear(0.0, 0.0, 0.0)
+
+    # --- Sky pass ---
+    sky_vbo, sky_ibo = create_sky_quad(ctx)
+    sky_prog = load_sky_shaders(ctx)
+    sky_vao = ctx.vertex_array(sky_prog, [(sky_vbo, '2f', 'in_pos')], sky_ibo)
+    sky_prog['u_sun_dir'].value = params['sun_dir']
+    sky_prog['u_inv_view'].write(np.linalg.inv(view).astype('f4').tobytes())
+    sky_prog['u_inv_projection'].write(np.linalg.inv(projection).astype('f4').tobytes())
+    ctx.disable(moderngl.DEPTH_TEST)
+    sky_vao.render()
+
+    # --- Ocean pass ---
     ctx.enable(moderngl.DEPTH_TEST)
     program['u_view'].write(view.astype('f4').tobytes())
     program['u_projection'].write(projection.astype('f4').tobytes())

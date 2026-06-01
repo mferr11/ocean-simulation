@@ -77,13 +77,13 @@ class OceanControls(tk.Frame):
 
         camera_sliders = [
             ("Azimuth (°)",         'camera_azimuth_deg',   0.0,   360.0,   1.0),
-            ("Elevation (°)",       'camera_elevation_deg', 5.0,   89.0,    1.0),
+            ("Elevation (°)",       'camera_elevation_deg', 1.0,   89.0,    1.0),
             ("Distance",            'camera_distance',      100.0, 3000.0,  10.0),
         ]
 
         sun_sliders = [
             ("Azimuth (°)",   'sun_azimuth_deg',   0.0,  360.0, 1.0),
-            ("Elevation (°)", 'sun_elevation_deg',  5.0,   89.0, 1.0),
+            ("Elevation (°)", 'sun_elevation_deg',  0.0,   89.0, 1.0),
         ]
 
         row = self._build_slider_section("Ocean Parameters", ocean_sliders,

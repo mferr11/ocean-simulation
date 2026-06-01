@@ -58,8 +58,8 @@ void main() {
     // Sun and sky colour driven by sun elevation (L.y = sin(elevation))
     float sun_elev = clamp(L.y, 0.0, 1.0);
     vec3 sun_colour  = mix(vec3(1.0, 0.35, 0.05), vec3(1.0, 0.95, 0.85), pow(sun_elev, 0.3));
-    vec3 sky_horizon = mix(vec3(1.0, 0.45, 0.15), vec3(0.70, 0.85, 1.0), pow(sun_elev, 0.5));
-    vec3 sky_zenith  = mix(vec3(0.05, 0.10, 0.30), vec3(0.10, 0.30, 0.8), pow(sun_elev, 0.6));
+    vec3 sky_horizon = mix(vec3(1.0, 0.55, 0.20), vec3(0.50, 0.75, 0.95), pow(sun_elev, 0.5));
+    vec3 sky_zenith  = mix(vec3(0.05, 0.10, 0.30), vec3(0.05, 0.20, 0.75), pow(sun_elev, 0.6));
     vec3 sky_R       = reflect(-V, N);
     vec3 sky_colour  = mix(sky_horizon, sky_zenith, clamp(sky_R.y * 0.5 + 0.5, 0.0, 1.0));
 
@@ -69,12 +69,15 @@ void main() {
     // Combine — all lighting tinted by sun colour so ocean shifts warm at low elevation
     vec3 colour = water_colour * sun_colour * (ambient + diffuse * shadow * 0.6)
                 + sun_colour * specular * shadow * 0.5
-                + sky_colour * fresnel;
+                + sky_colour * fresnel * 0.7;
 
     // Foam — tinted by sun colour so it picks up warmth at low sun angles
     float foam = pow(clamp(texture(u_foam_mask, frag_uv).r, 0.0, 1.0), 0.5);
     vec3 foam_colour = mix(vec3(1.0), sun_colour, 0.4);
     colour = mix(colour, foam_colour, foam * 0.85);
+
+    // Reinhard tone mapping — compresses HDR values instead of hard-clamping
+    colour = colour / (colour + vec3(1.0));
 
     out_colour = vec4(colour, 1.0);
 }
