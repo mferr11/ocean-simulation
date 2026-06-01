@@ -86,8 +86,10 @@ class OceanControls(tk.Frame):
             ("Elevation (°)", 'sun_elevation_deg',  0.0,   89.0, 1.0),
         ]
 
+        row = self._build_resolution_selector(start_row=0)
+        self._build_separator(row)
         row = self._build_slider_section("Ocean Parameters", ocean_sliders,
-                                         start_row=0, reset_cmd=self._reset_ocean)
+                                         start_row=row + 1, reset_cmd=self._reset_ocean)
         self._build_separator(row)
         row = self._build_colour_section("Ocean Colour", colour_params,
                                          start_row=row + 1, reset_cmd=self._reset_colours)
@@ -97,6 +99,37 @@ class OceanControls(tk.Frame):
         self._build_separator(row)
         self._build_slider_section("Sun", sun_sliders,
                                    start_row=row + 1, reset_cmd=self._reset_sun)
+
+    def _build_resolution_selector(self, start_row):
+        self._section_header(start_row, "Resolution")
+        frame = tk.Frame(self, bg=_BG)
+        frame.grid(row=start_row + 1, column=0, columnspan=3, padx=10, pady=6, sticky='ew')
+
+        self._res_buttons = {}
+        for label, value in [('Low  (512)', 512), ('Med  (1024)', 1024), ('High  (2048)', 2048)]:
+            btn = tk.Button(
+                frame, text=label, font=(_FONT, 9),
+                command=lambda v=value: self._set_resolution(v),
+                relief='flat', cursor='hand2',
+                bd=0, highlightthickness=0, pady=4, padx=10,
+            )
+            btn.pack(side='left', padx=2, fill='x', expand=True)
+            self._res_buttons[value] = btn
+
+        self._update_resolution_buttons()
+        return start_row + 2
+
+    def _set_resolution(self, value):
+        self.params['grid_resolution'] = value
+        self._update_resolution_buttons()
+
+    def _update_resolution_buttons(self):
+        current = self.params.get('grid_resolution', 512)
+        for value, btn in self._res_buttons.items():
+            if value == current:
+                btn.configure(bg=_ACCENT, fg='#1e1e2e', font=(_FONT, 9, 'bold'))
+            else:
+                btn.configure(bg=_SECTION, fg=_FG, font=(_FONT, 9))
 
     def _section_header(self, row, title, reset_cmd=None):
         frame = tk.Frame(self, bg=_SECTION, padx=6, pady=4)
