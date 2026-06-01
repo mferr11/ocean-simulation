@@ -55,20 +55,25 @@ void main() {
     float R0 = 0.02;
     float fresnel = R0 + (1.0 - R0) * pow(1.0 - max(dot(V, N), 0.0), 5.0);
 
-    // Sky colour for Fresnel reflection
-    vec3 sky_colour = mix(vec3(0.6, 0.8, 1.0), vec3(0.1, 0.3, 0.8), N.y * 0.5 + 0.5);
+    // Sun and sky colour driven by sun elevation (L.y = sin(elevation))
+    float sun_elev = clamp(L.y, 0.0, 1.0);
+    vec3 sun_colour  = mix(vec3(1.0, 0.35, 0.05), vec3(1.0, 0.95, 0.85), pow(sun_elev, 0.3));
+    vec3 sky_horizon = mix(vec3(1.0, 0.45, 0.15), vec3(0.70, 0.85, 1.0), pow(sun_elev, 0.5));
+    vec3 sky_zenith  = mix(vec3(0.5, 0.15, 0.20), vec3(0.10, 0.30, 0.8), pow(sun_elev, 0.4));
+    vec3 sky_colour  = mix(sky_horizon, sky_zenith, N.y * 0.5 + 0.5);
 
     // Shadow (ambient and Fresnel are unshadowed — indirect/sky light)
     float shadow = shadow_factor(frag_light_space_pos);
 
-    // Combine
-    vec3 colour = water_colour * (ambient + diffuse * shadow * 0.6)
-                + vec3(1.0) * specular * shadow * 0.5
+    // Combine — all lighting tinted by sun colour so ocean shifts warm at low elevation
+    vec3 colour = water_colour * sun_colour * (ambient + diffuse * shadow * 0.6)
+                + sun_colour * specular * shadow * 0.5
                 + sky_colour * fresnel;
 
-    // Foam
-    float foam = texture(u_foam_mask, frag_uv).r;
-    colour = mix(colour, vec3(1.0), foam * 0.8);
+    // Foam — tinted by sun colour so it picks up warmth at low sun angles
+    float foam = pow(clamp(texture(u_foam_mask, frag_uv).r, 0.0, 1.0), 0.5);
+    vec3 foam_colour = mix(vec3(1.0), sun_colour, 0.4);
+    colour = mix(colour, foam_colour, foam * 0.85);
 
     out_colour = vec4(colour, 1.0);
 }
