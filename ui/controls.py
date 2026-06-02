@@ -12,6 +12,7 @@ SLIDER_STEPS = {
     'choppiness':           0.05,
     'foam_threshold':       0.05,
     'height_scale':         0.1,
+    'loop_period':          5.0,
     'time':                 0.1,
     'camera_azimuth_deg':   1.0,
     'camera_elevation_deg': 1.0,
@@ -29,7 +30,7 @@ _RESET   = '#6c7086'
 _FONT    = 'Segoe UI'
 
 _OCEAN_KEYS  = ['wind_speed', 'wind_direction_deg', 'choppiness',
-                'foam_threshold', 'height_scale', 'time']
+                'foam_threshold', 'height_scale', 'loop_period', 'time']
 _COLOUR_KEYS = ['deep_colour', 'shallow_colour']
 _SUN_KEYS    = ['sun_azimuth_deg', 'sun_elevation_deg']
 
@@ -63,11 +64,12 @@ class OceanControls(tk.Frame):
 
     def _build(self):
         ocean_sliders = [
-            ("Wind Speed (m/s)",    'wind_speed',           1.0,   40.0,    1.0),
+            ("Wind Speed (m/s)",    'wind_speed',           1.0,   100.0,    1.0),
             ("Wind Direction (°)",  'wind_direction_deg',   0.0,   360.0,   1.0),
-            ("Choppiness",          'choppiness',           0.0,   3.0,     0.05),
+            ("Choppiness",          'choppiness',           0.0,   5.0,     0.05),
             ("Foam Threshold",      'foam_threshold',       0.0,   1.0,     0.05),
-            ("Height Scale",        'height_scale',         0.0,   10.0,    0.1),
+            ("Height Scale",        'height_scale',         0.0,   50.0,    0.1),
+            ("Loop Period (s)",     'loop_period',          5.0,   60.0,    5.0),
             ("Time (s)",            'time',                 0.0,   20.0,    0.1),
         ]
 
@@ -80,7 +82,7 @@ class OceanControls(tk.Frame):
             ("Azimuth (°)",         'camera_azimuth_deg',   0.0,   360.0,   1.0),
             ("Elevation (°)",       'camera_elevation_deg', 0.0,   90.0,    1.0),
             ("Distance",            'camera_distance',      100.0, 3000.0,  10.0),
-            ("Y Offset",            'camera_y_offset',      0.0,   1000.0,   10.0),
+            ("Y Offset",            'camera_y_offset',      -1000.0,   1000.0,   10.0),
         ]
 
         sun_sliders = [

@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
@@ -49,6 +50,7 @@ class OceanApp(tk.Tk):
         self.render_image = None
         self.last_image = None
         self._render_job = None
+        self._anim_cancel = threading.Event()
 
         self._build()
 
@@ -103,6 +105,13 @@ class OceanApp(tk.Tk):
             font=(_FONT, 11, 'bold'), pady=7, **btn,
         )
         self.animate_button.pack(fill='x')
+
+        self.cancel_anim_button = tk.Button(
+            left, text="Cancel Animation", command=self._on_cancel_animate,
+            bg='#b71c1c', activebackground='#7f0000',
+            font=(_FONT, 11, 'bold'), pady=7, state='disabled', **btn,
+        )
+        self.cancel_anim_button.pack(fill='x', pady=(4, 0))
 
         # Status area
         self.status_label = tk.Label(left, text="Ready", fg=_MUTED,
@@ -183,51 +192,72 @@ class OceanApp(tk.Tk):
     def _on_animate(self):
         from rendering.animation import render_animation
 
+        self._anim_cancel.clear()
         self.animate_button.configure(state='disabled', text='Rendering...')
+        self.cancel_anim_button.configure(state='normal')
         self.save_button.configure(state='disabled')
         self.status_label.configure(text='Rendering animation...', fg='#fab387')
-        self.update()
+        self.time_label.configure(text='')
 
         params = self.controls.get_params()
         fps = self.fps_var.get()
 
+        os.makedirs('videos', exist_ok=True)
+        p = params
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        video_path = (
+            f"videos/ocean_"
+            f"wind{p['wind_speed']:.0f}_"
+            f"dir{p['wind_direction_deg']:.0f}_"
+            f"chop{p['choppiness']:.2f}_"
+            f"foam{p['foam_threshold']:.2f}_"
+            f"fps{fps}_"
+            f"{ts}.mp4"
+        )
+
         def progress(frame, total, frame_time):
             remaining = (total - frame) * frame_time
-            self.status_label.configure(
-                text=f'Frame {frame}/{total} — ~{remaining:.0f}s remaining',
-                fg='#fab387',
-            )
+            self.after(0, lambda f=frame, t=total, r=remaining: self.status_label.configure(
+                text=f'Frame {f}/{t} — ~{r:.0f}s remaining', fg='#fab387',
+            ))
             self.after(0, self._load_latest_frame, frame)
-            self.update()
 
-        try:
-            p = params
-            os.makedirs('videos', exist_ok=True)
-            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            video_path = (
-                f"videos/ocean_"
-                f"wind{p['wind_speed']:.0f}_"
-                f"dir{p['wind_direction_deg']:.0f}_"
-                f"chop{p['choppiness']:.2f}_"
-                f"foam{p['foam_threshold']:.2f}_"
-                f"fps{fps}_"
-                f"{ts}.mp4"
-            )
+        def run():
+            try:
+                result = render_animation(
+                    params,
+                    fps=fps,
+                    output_dir='images/frames',
+                    video_path=video_path,
+                    progress_callback=progress,
+                    cancel_event=self._anim_cancel,
+                )
+                if result is not None:
+                    self.after(0, lambda r=result: self.status_label.configure(
+                        text=f'Saved: {r}', fg='#a6e3a1',
+                    ))
+                else:
+                    self.after(0, lambda: self.status_label.configure(
+                        text='Animation cancelled', fg=_MUTED,
+                    ))
+            except Exception as e:
+                self.after(0, lambda err=str(e): self.status_label.configure(
+                    text=f'Error: {err}', fg='#f38ba8',
+                ))
+            finally:
+                self.after(0, self._on_animate_done)
 
-            video_path = render_animation(
-                params,
-                fps=fps,
-                output_dir='images/frames',
-                video_path=video_path,
-                progress_callback=progress,
-            )
-            self.status_label.configure(text=f'Saved: {video_path}', fg='#a6e3a1')
-        except Exception as e:
-            self.status_label.configure(text=f'Error: {e}', fg='#f38ba8')
-            raise
-        finally:
-            self.animate_button.configure(state='normal', text='Render Animation')
-            self.save_button.configure(state='normal')
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_cancel_animate(self):
+        self._anim_cancel.set()
+        self.cancel_anim_button.configure(state='disabled')
+        self.status_label.configure(text='Cancelling...', fg='#fab387')
+
+    def _on_animate_done(self):
+        self.animate_button.configure(state='normal', text='Render Animation')
+        self.cancel_anim_button.configure(state='disabled')
+        self.save_button.configure(state='normal')
 
     def run(self):
         self.mainloop()

@@ -7,7 +7,7 @@ from ocean.parameters import orbit_to_camera_eye
 from rendering.renderer import render
 
 
-def render_animation(params, fps=24, output_dir='images/frames', video_path='images/ocean.mp4', progress_callback=None):
+def render_animation(params, fps=24, output_dir='images/frames', video_path='images/ocean.mp4', progress_callback=None, cancel_event=None):
     os.makedirs(output_dir, exist_ok=True)
 
     loop_period = params['loop_period']
@@ -18,6 +18,10 @@ def render_animation(params, fps=24, output_dir='images/frames', video_path='ima
     frame_params = dict(params)
 
     for frame_index in range(total_frames):
+        if cancel_event is not None and cancel_event.is_set():
+            print("Animation cancelled.")
+            return None
+
         t = (frame_index / total_frames) * loop_period
         frame_params['time'] = t
 

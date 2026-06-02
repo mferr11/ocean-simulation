@@ -70,7 +70,11 @@ def load_shadow_shaders(ctx):
 
 def create_shadow_map(ctx, shadow_size=2048):
     shadow_tex = ctx.depth_texture((shadow_size, shadow_size))
-    shadow_fbo = ctx.framebuffer(depth_attachment=shadow_tex)
+    # Depth-only FBOs return GL_FRAMEBUFFER_UNSUPPORTED on many Windows drivers
+    # unless glDrawBuffer(GL_NONE) is set, which ModernGL doesn't do automatically.
+    # A dummy color renderbuffer makes the FBO universally complete.
+    dummy_color = ctx.renderbuffer((shadow_size, shadow_size))
+    shadow_fbo = ctx.framebuffer(color_attachments=[dummy_color], depth_attachment=shadow_tex)
     return shadow_tex, shadow_fbo
 
 
