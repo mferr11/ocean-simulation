@@ -47,6 +47,7 @@ class OceanApp(tk.Tk):
         self.params = default_params()
         self.render_image = None
         self.last_image = None
+        self._render_job = None
 
         self._build()
 
@@ -58,7 +59,7 @@ class OceanApp(tk.Tk):
         tk.Label(left, text="Ocean Renderer", font=(_FONT, 13, 'bold'),
                  fg=_ACCENT, bg=_BG).pack(anchor='w', pady=(0, 6))
 
-        self.controls = OceanControls(left, self.params)
+        self.controls = OceanControls(left, self.params, on_change=self._schedule_render)
         self.controls.pack()
 
         ttk.Separator(left, orient='horizontal').pack(fill='x', pady=8)
@@ -88,24 +89,17 @@ class OceanApp(tk.Tk):
         btn = dict(relief='flat', fg='white', cursor='hand2',
                    bd=0, highlightthickness=0)
 
-        self.render_button = tk.Button(
-            left, text="Render", command=self._on_render,
-            bg='#1a6fad', activebackground='#155d96',
-            font=(_FONT, 11, 'bold'), pady=7, **btn,
-        )
-        self.render_button.pack(fill='x', pady=(0, 4))
-
         self.save_button = tk.Button(
             left, text="Save Image", command=self._on_save,
             bg='#2e7d32', activebackground='#256027',
-            font=(_FONT, 9), pady=5, state='disabled', **btn,
+            font=(_FONT, 11, 'bold'), pady=7, state='disabled', **btn,
         )
         self.save_button.pack(fill='x', pady=(0, 4))
 
         self.animate_button = tk.Button(
             left, text="Render Animation", command=self._on_animate,
             bg='#0097a7', activebackground='#00838f',
-            font=(_FONT, 9), pady=5, **btn,
+            font=(_FONT, 11, 'bold'), pady=7, **btn,
         )
         self.animate_button.pack(fill='x')
 
@@ -136,9 +130,14 @@ class OceanApp(tk.Tk):
         self.render_image = ImageTk.PhotoImage(image)
         self.canvas.configure(image=self.render_image)
 
+    def _schedule_render(self, *_):
+        if self._render_job is not None:
+            self.after_cancel(self._render_job)
+        self._render_job = self.after(400, self._on_render)
+
     def _on_render(self):
-        self.render_button.configure(state='disabled', text='Rendering...')
-        self.status_label.configure(text='Running FFT pipeline...', fg='#fab387')
+        self._render_job = None
+        self.status_label.configure(text='Rendering...', fg='#fab387')
         self.time_label.configure(text='')
         self.update()
 
@@ -157,8 +156,6 @@ class OceanApp(tk.Tk):
         except Exception as e:
             self.status_label.configure(text=f'Error: {e}', fg='#f38ba8')
             raise
-        finally:
-            self.render_button.configure(state='normal', text='Render')
 
     def _on_save(self):
         if self.last_image is None:
@@ -186,7 +183,6 @@ class OceanApp(tk.Tk):
         from rendering.animation import render_animation
 
         self.animate_button.configure(state='disabled', text='Rendering...')
-        self.render_button.configure(state='disabled')
         self.save_button.configure(state='disabled')
         self.status_label.configure(text='Rendering animation...', fg='#fab387')
         self.update()
@@ -228,7 +224,6 @@ class OceanApp(tk.Tk):
             raise
         finally:
             self.animate_button.configure(state='normal', text='Render Animation')
-            self.render_button.configure(state='normal')
             self.save_button.configure(state='normal')
 
     def run(self):

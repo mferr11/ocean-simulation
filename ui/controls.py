@@ -122,6 +122,8 @@ class OceanControls(tk.Frame):
     def _set_resolution(self, value):
         self.params['grid_resolution'] = value
         self._update_resolution_buttons()
+        if self.on_change:
+            self.on_change('grid_resolution')
 
     def _update_resolution_buttons(self):
         current = self.params.get('grid_resolution', 512)
@@ -207,6 +209,8 @@ class OceanControls(tk.Frame):
             self.colour_vars[key] = hex_color
             self._colour_swatches[key].configure(bg=hex_color)
             self.params[key] = _hex_to_rgb01(hex_color)
+            if self.on_change:
+                self.on_change(key)
 
     def _build_separator(self, row):
         ttk.Separator(self, orient='horizontal').grid(
@@ -234,6 +238,8 @@ class OceanControls(tk.Frame):
             if key in self.fmt_vars:
                 fmt_var, dec = self.fmt_vars[key]
                 fmt_var.set(f"{val:.{dec}f}")
+        if self.on_change:
+            self.on_change(None)
 
     def _reset_colours(self):
         defaults = default_params()
@@ -243,6 +249,8 @@ class OceanControls(tk.Frame):
             self.colour_vars[key] = hex_color
             self._colour_swatches[key].configure(bg=hex_color)
             self.params[key] = rgb
+        if self.on_change:
+            self.on_change(None)
 
     def _sync_camera(self):
         self.params['camera_eye'] = orbit_to_camera_eye(
@@ -269,6 +277,8 @@ class OceanControls(tk.Frame):
             if key in self.fmt_vars:
                 fmt_var, dec = self.fmt_vars[key]
                 fmt_var.set(f"{val:.{dec}f}")
+        if self.on_change:
+            self.on_change(None)
 
     def _reset_sun(self):
         az, el = DEFAULT_SUN
@@ -279,6 +289,8 @@ class OceanControls(tk.Frame):
             if key in self.fmt_vars:
                 fmt_var, dec = self.fmt_vars[key]
                 fmt_var.set(f"{val:.{dec}f}")
+        if self.on_change:
+            self.on_change(None)
 
     def get_params(self):
         for key, var in self.vars.items():
