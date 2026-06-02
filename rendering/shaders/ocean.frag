@@ -49,7 +49,7 @@ void main() {
 
     // Specular (Phong)
     vec3 R = reflect(-L, N);
-    float specular = pow(max(dot(R, V), 0.0), 64.0);
+    float specular = pow(max(dot(R, V), 0.0), 512.0);
 
     // Fresnel (Schlick approximation)
     float R0 = 0.02;
@@ -68,7 +68,7 @@ void main() {
 
     // Combine — all lighting tinted by sun colour so ocean shifts warm at low elevation
     vec3 colour = water_colour * sun_colour * (ambient + diffuse * shadow * 0.6)
-                + sun_colour * specular * shadow * 0.5
+                + sun_colour * specular * shadow * fresnel * 6.0
                 + sky_colour * fresnel * 0.7;
 
     // Foam — tinted by sun colour so it picks up warmth at low sun angles

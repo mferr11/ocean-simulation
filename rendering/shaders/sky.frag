@@ -21,7 +21,7 @@ void main() {
     // Subtle sun glow
     float sun_dot = max(dot(dir, L), 0.0);
     vec3 sun_colour = mix(vec3(1.0, 0.35, 0.05), vec3(1.0, 0.95, 0.85), pow(sun_elev, 0.3));
-    sky += sun_colour * pow(sun_dot, 256.0) * 3.0;
+    sky += sun_colour * pow(sun_dot, 1024) * 3.0;
 
     out_colour = vec4(sky, 1.0);
 }
