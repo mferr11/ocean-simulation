@@ -15,12 +15,12 @@ CAMERA_EYE = (600, 250, 600)
 CAMERA_AZIMUTH_DEG = 135.0
 CAMERA_ELEVATION_DEG = 25.0
 CAMERA_DISTANCE = 850.0
-SUN_AZIMUTH_DEG = 45.0
-SUN_ELEVATION_DEG = 45.0
+SUN_AZIMUTH_DEG = 315.0
+SUN_ELEVATION_DEG = 60.0
 DEEP_COLOUR = (0.02, 0.15, 0.3)
 SHALLOW_COLOUR = (0.1, 0.4, 0.5)
 
-DEPTH_SCALE = 0.001
+DEPTH_SCALE = 0.05
 
 def orbit_to_camera_eye(azimuth_deg, elevation_deg, distance):
     az = math.radians(azimuth_deg)

@@ -4,7 +4,7 @@ from tkinter import ttk
 from ocean.parameters import default_params, orbit_to_camera_eye, sun_dir_from_angles
 
 DEFAULT_CAMERA = (135.0, 25.0, 850.0)
-DEFAULT_SUN = (45.0, 45.0)
+DEFAULT_SUN = (45.0, 60.0)
 
 SLIDER_STEPS = {
     'wind_speed':           0.5,
