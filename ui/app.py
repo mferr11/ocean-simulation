@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -161,12 +162,14 @@ class OceanApp(tk.Tk):
             return
         os.makedirs('images', exist_ok=True)
         p = self.controls.get_params()
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = (
             f"images/ocean_"
             f"wind{p['wind_speed']:.0f}_"
             f"dir{p['wind_direction_deg']:.0f}_"
             f"chop{p['choppiness']:.2f}_"
-            f"t{p['time']:.1f}.png"
+            f"t{p['time']:.1f}_"
+            f"{ts}.png"
         )
         self.last_image.save(filename)
         self.status_label.configure(text=f'Saved: {filename}', fg='#a6e3a1')
@@ -200,13 +203,15 @@ class OceanApp(tk.Tk):
         try:
             p = params
             os.makedirs('videos', exist_ok=True)
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             video_path = (
                 f"videos/ocean_"
                 f"wind{p['wind_speed']:.0f}_"
                 f"dir{p['wind_direction_deg']:.0f}_"
                 f"chop{p['choppiness']:.2f}_"
                 f"foam{p['foam_threshold']:.2f}_"
-                f"fps{fps}.mp4"
+                f"fps{fps}_"
+                f"{ts}.mp4"
             )
 
             video_path = render_animation(

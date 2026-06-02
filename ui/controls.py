@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from ocean.parameters import default_params, orbit_to_camera_eye, sun_dir_from_angles
 
-DEFAULT_CAMERA = (135.0, 25.0, 850.0, 0.0)
+DEFAULT_CAMERA = (135.0, 25.0, 1750.0, 0.0)
 DEFAULT_SUN = (315.0, 60.0)
 
 SLIDER_STEPS = {
@@ -63,10 +63,10 @@ class OceanControls(tk.Frame):
 
     def _build(self):
         ocean_sliders = [
-            ("Wind Speed (m/s)",    'wind_speed',           1.0,   40.0,    0.5),
+            ("Wind Speed (m/s)",    'wind_speed',           1.0,   40.0,    1.0),
             ("Wind Direction (°)",  'wind_direction_deg',   0.0,   360.0,   1.0),
             ("Choppiness",          'choppiness',           0.0,   3.0,     0.05),
-            ("Foam Threshold",      'foam_threshold',       0.0,   1.0,     0.01),
+            ("Foam Threshold",      'foam_threshold',       0.0,   1.0,     0.05),
             ("Height Scale",        'height_scale',         0.0,   10.0,    0.1),
             ("Time (s)",            'time',                 0.0,   20.0,    0.1),
         ]
@@ -78,14 +78,14 @@ class OceanControls(tk.Frame):
 
         camera_sliders = [
             ("Azimuth (°)",         'camera_azimuth_deg',   0.0,   360.0,   1.0),
-            ("Elevation (°)",       'camera_elevation_deg', 1.0,   89.0,    1.0),
+            ("Elevation (°)",       'camera_elevation_deg', 0.0,   90.0,    1.0),
             ("Distance",            'camera_distance',      100.0, 3000.0,  10.0),
-            ("Y Offset",            'camera_y_offset',      0.0,   250.0,   10.0),
+            ("Y Offset",            'camera_y_offset',      0.0,   1000.0,   10.0),
         ]
 
         sun_sliders = [
             ("Azimuth (°)",   'sun_azimuth_deg',   0.0,  360.0, 1.0),
-            ("Elevation (°)", 'sun_elevation_deg',  0.0,   89.0, 1.0),
+            ("Elevation (°)", 'sun_elevation_deg',  0.0,   90.0, 1.0),
         ]
 
         row = self._build_resolution_selector(start_row=0)
