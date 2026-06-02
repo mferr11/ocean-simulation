@@ -110,57 +110,6 @@ def create_camera_matrices(width, height, eye=(600, 250, 600)):
     return view, projection
 
 
-# --- Tests ---
-
-def test_render(width=800, height=600):
-    ctx = create_context()
-    fbo = create_framebuffer(ctx, width, height)
-    fbo.use()
-    ctx.clear(0.1, 0.3, 0.6)
-    image = read_framebuffer(fbo, width, height)
-    os.makedirs('images', exist_ok=True)
-    image.save('images/test_render.png')
-    print("Test render saved — context is working")
-
-
-def test_shaders():
-    ctx = create_context()
-    program = load_shaders(ctx)
-    print(f"Shaders loaded — uniforms: {list(program)}")
-
-
-def test_mesh(width=1024, height=1024):
-    from rendering.mesh import create_grid_mesh
-
-    ctx = create_context()
-    fbo = create_framebuffer(ctx, width, height)
-    program = load_shaders(ctx)
-    vbo, ibo = create_grid_mesh(ctx, grid_resolution=32)
-    vao = ctx.vertex_array(program, [(vbo, '2f', 'in_uv')], ibo)
-    view, projection = create_camera_matrices(width, height)
-
-    fbo.use()
-    ctx.clear(0.05, 0.05, 0.05)
-    ctx.enable(moderngl.DEPTH_TEST)
-    program['u_view'].write(view.astype('f4').tobytes())
-    program['u_projection'].write(projection.astype('f4').tobytes())
-    program['u_grid_size'].value = (500.0, 500.0)
-    vao.render()
-
-    image = read_framebuffer(fbo, width, height)
-    os.makedirs('images', exist_ok=True)
-    image.save('images/test_mesh.png')
-    print("Mesh render saved")
-
-
-def test_textures(width=1024, height=1024):
-    from ocean.parameters import default_params
-    params = default_params()
-    image = render(params, width, height)
-    os.makedirs('images', exist_ok=True)
-    image.save('images/test_textures.png')
-    print("Texture render saved")
-
 def run_ocean_pipeline(params):
     from ocean.simulation import compute_oscillation_rates, compute_surface_fields, time_evolve
     from ocean.spectrum import generate_initial_amplitudes, make_spatial_frequency_grid, phillips_spectrum
@@ -264,7 +213,3 @@ def render(params, width=1024, height=1024):
 
     return read_framebuffer(fbo, width, height)
 
-
-if __name__ == '__main__':
-    test_textures()
-    test_mesh()

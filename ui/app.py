@@ -2,7 +2,7 @@ import os
 import time
 import tkinter as tk
 from tkinter import ttk
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from ocean.parameters import default_params
 from rendering.renderer import render
@@ -122,7 +122,6 @@ class OceanApp(tk.Tk):
         self.after(100, self._on_render)
 
     def _show_placeholder(self):
-        from PIL import Image
         placeholder = Image.new('RGB', (768, 768), color=(10, 10, 20))
         self._display_image(placeholder)
 
@@ -173,7 +172,6 @@ class OceanApp(tk.Tk):
         self.status_label.configure(text=f'Saved: {filename}', fg='#a6e3a1')
 
     def _load_latest_frame(self, frame_index):
-        from PIL import Image
         frame_path = f'images/frames/frame_{frame_index - 1:04d}.png'
         if os.path.exists(frame_path):
             image = Image.open(frame_path)

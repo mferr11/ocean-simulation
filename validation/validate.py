@@ -9,6 +9,7 @@ from ocean.parameters import (
     GRID_RESOLUTION,
     GRID_SIZE,
     HEIGHT_SCALE,
+    LOOP_PERIOD,
     PHILLIPS_A,
     WIND_DIRECTION_DEG,
     WIND_SPEED,
@@ -19,11 +20,11 @@ from ocean.spectrum import generate_initial_amplitudes, make_spatial_frequency_g
 freq_x, freq_y, magnitude = make_spatial_frequency_grid(GRID_RESOLUTION, GRID_SIZE)
 wave_energy = phillips_spectrum(freq_x, freq_y, magnitude, WIND_SPEED, WIND_DIRECTION_DEG)
 initial_amplitudes, initial_amplitudes_mirror = generate_initial_amplitudes(wave_energy)
-oscillation_rate = compute_oscillation_rates(magnitude)
+oscillation_rate = compute_oscillation_rates(magnitude, LOOP_PERIOD)
 
 freq_amplitudes = time_evolve(initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t=0.0)
 wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, surface_compression = \
-    compute_surface_fields(freq_amplitudes, freq_x, freq_y, magnitude, FOAM_THRESHOLD, CHOPPINESS, HEIGHT_SCALE)
+    compute_surface_fields(freq_amplitudes, freq_x, freq_y, magnitude, FOAM_THRESHOLD, CHOPPINESS, HEIGHT_SCALE, GRID_RESOLUTION)
 
 assert np.allclose(np.fft.ifft2(freq_amplitudes).imag, 0, atol=1e-10), \
     "heightmap has imaginary residue — check initial_amplitudes_mirror"
