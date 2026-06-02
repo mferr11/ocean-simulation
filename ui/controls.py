@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from ocean.parameters import default_params, orbit_to_camera_eye, sun_dir_from_angles
 
-DEFAULT_CAMERA = (135.0, 25.0, 850.0)
+DEFAULT_CAMERA = (135.0, 25.0, 850.0, 0.0)
 DEFAULT_SUN = (315.0, 60.0)
 
 SLIDER_STEPS = {
@@ -16,6 +16,7 @@ SLIDER_STEPS = {
     'camera_azimuth_deg':   1.0,
     'camera_elevation_deg': 1.0,
     'camera_distance':      10.0,
+    'camera_y_offset':      10.0,
     'sun_azimuth_deg':      1.0,
     'sun_elevation_deg':    1.0,
 }
@@ -79,6 +80,7 @@ class OceanControls(tk.Frame):
             ("Azimuth (°)",         'camera_azimuth_deg',   0.0,   360.0,   1.0),
             ("Elevation (°)",       'camera_elevation_deg', 1.0,   89.0,    1.0),
             ("Distance",            'camera_distance',      100.0, 3000.0,  10.0),
+            ("Y Offset",            'camera_y_offset',      0.0,   250.0,   10.0),
         ]
 
         sun_sliders = [
@@ -266,14 +268,17 @@ class OceanControls(tk.Frame):
         )
 
     def _reset_camera(self):
-        az, el, dist = DEFAULT_CAMERA
+        az, el, dist, y_off = DEFAULT_CAMERA
         self.vars['camera_azimuth_deg'].set(az)
         self.vars['camera_elevation_deg'].set(el)
         self.vars['camera_distance'].set(dist)
+        self.vars['camera_y_offset'].set(y_off)
         self.params['camera_eye'] = orbit_to_camera_eye(az, el, dist)
+        self.params['camera_y_offset'] = y_off
         for key, val in [('camera_azimuth_deg', az),
                          ('camera_elevation_deg', el),
-                         ('camera_distance', dist)]:
+                         ('camera_distance', dist),
+                         ('camera_y_offset', y_off)]:
             if key in self.fmt_vars:
                 fmt_var, dec = self.fmt_vars[key]
                 fmt_var.set(f"{val:.{dec}f}")

@@ -15,6 +15,7 @@ CAMERA_EYE = (600, 250, 600)
 CAMERA_AZIMUTH_DEG = 135.0
 CAMERA_ELEVATION_DEG = 25.0
 CAMERA_DISTANCE = 850.0
+CAMERA_Y_OFFSET = 0.0
 SUN_AZIMUTH_DEG = 315.0
 SUN_ELEVATION_DEG = 60.0
 DEEP_COLOUR = (0.02, 0.15, 0.3)
@@ -53,6 +54,7 @@ def default_params():
         'camera_azimuth_deg': CAMERA_AZIMUTH_DEG,
         'camera_elevation_deg': CAMERA_ELEVATION_DEG,
         'camera_distance':    CAMERA_DISTANCE,
+        'camera_y_offset':    CAMERA_Y_OFFSET,
         'camera_eye':         orbit_to_camera_eye(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, CAMERA_DISTANCE),
         'sun_azimuth_deg':    SUN_AZIMUTH_DEG,
         'sun_elevation_deg':  SUN_ELEVATION_DEG,

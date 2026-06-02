@@ -98,10 +98,10 @@ def create_light_space_matrix(sun_dir, grid_size):
 
 # --- Camera ---
 
-def create_camera_matrices(width, height, eye=(600, 250, 600)):
+def create_camera_matrices(width, height, eye=(600, 250, 600), target=(0, 0, 0)):
     view = pyrr.matrix44.create_look_at(
         eye=np.array(eye, dtype=np.float32),
-        target=np.array([0, 0, 0], dtype=np.float32),
+        target=np.array(target, dtype=np.float32),
         up=np.array([0, 1, 0], dtype=np.float32),
     )
     projection = pyrr.matrix44.create_perspective_projection(
@@ -150,7 +150,11 @@ def render(params, width=1024, height=1024):
     )
 
     light_space = create_light_space_matrix(params['sun_dir'], params['grid_size'])
-    view, projection = create_camera_matrices(width, height, eye=params['camera_eye'])
+    y_off = params.get('camera_y_offset', 0.0)
+    eye = params['camera_eye']
+    cam_eye = (eye[0], eye[1] + y_off, eye[2])
+    cam_target = (0, y_off, 0)
+    view, projection = create_camera_matrices(width, height, eye=cam_eye, target=cam_target)
 
     # --- Shadow pass ---
     shadow_tex, shadow_fbo = create_shadow_map(ctx)
@@ -204,7 +208,7 @@ def render(params, width=1024, height=1024):
     program['u_light_space'].write(light_space.tobytes())
     program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
     program['u_height_scale'].value = params['height_scale']
-    program['u_camera_pos'].value = params['camera_eye']
+    program['u_camera_pos'].value = cam_eye
     program['u_sun_dir'].value = params['sun_dir']
     program['u_deep_colour'].value = params['deep_colour']
     program['u_shallow_colour'].value = params['shallow_colour']
