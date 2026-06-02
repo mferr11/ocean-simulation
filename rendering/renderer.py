@@ -138,13 +138,26 @@ def run_ocean_pipeline(params):
 
 
 def render(params, width=1024, height=1024):
-    from rendering.mesh import create_grid_mesh
-    from rendering.textures import upload_all_textures
-
     wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask = \
         run_ocean_pipeline(params)
 
     ctx = create_context()
+    try:
+        return _render_with_context(
+            ctx, params, width, height,
+            wave_height, surface_tilt_x, surface_tilt_y,
+            sideways_shift_x, sideways_shift_y, foam_mask,
+        )
+    finally:
+        ctx.release()
+
+
+def _render_with_context(ctx, params, width, height,
+                         wave_height, surface_tilt_x, surface_tilt_y,
+                         sideways_shift_x, sideways_shift_y, foam_mask):
+    from rendering.mesh import create_grid_mesh
+    from rendering.textures import upload_all_textures
+
     fbo = create_framebuffer(ctx, width, height)
     program = load_shaders(ctx)
     vbo, ibo = create_grid_mesh(ctx, grid_resolution=params['grid_resolution'])
