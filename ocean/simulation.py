@@ -35,6 +35,8 @@ def compute_surface_fields(freq_amplitudes, freq_x, freq_y, magnitude, foam_thre
     shift_x_rate_y = np.real(np.fft.ifft2(-freq_x * freq_y / magnitude_nonzero * freq_amplitudes)) * choppiness * height_scale * grid_resolution
 
     surface_compression = (1 + shift_x_rate_x) * (1 + shift_y_rate_y) - shift_x_rate_y**2
-    foam_mask = (surface_compression < foam_threshold).astype(np.float32)
+    foam_margin = max(abs(foam_threshold) * 1.0, 0.01)
+    t = np.clip((foam_threshold - surface_compression) / foam_margin, 0.0, 1.0)
+    foam_mask = (t * t * (3.0 - 2.0 * t)).astype(np.float32)
 
     return wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, surface_compression

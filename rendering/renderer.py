@@ -163,7 +163,8 @@ def _render_with_context(ctx, params, width, height,
     vbo, ibo = create_grid_mesh(ctx, grid_resolution=params['grid_resolution'])
 
     textures = upload_all_textures(
-        ctx, wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask
+        ctx, wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask,
+        foam_upsample=params.get('foam_upsample', 1),
     )
 
     light_space = create_light_space_matrix(params['sun_dir'], params['grid_size'])

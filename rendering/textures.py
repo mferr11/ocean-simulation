@@ -1,5 +1,6 @@
 import numpy as np
 import moderngl
+from scipy.ndimage import zoom
 
 def upload_texture(ctx, array, components=1):
     data = array.astype(np.float32).tobytes()
@@ -11,7 +12,9 @@ def upload_texture(ctx, array, components=1):
     return tex
 
 def upload_all_textures(ctx, height, surface_tilt_x, surface_tilt_y,
-                        sideways_shift_x, sideways_shift_y, foam_mask):
+                        sideways_shift_x, sideways_shift_y, foam_mask, foam_upsample=1):
+    if foam_upsample > 1:
+        foam_mask = np.clip(zoom(foam_mask, foam_upsample, order=3), 0.0, 1.0)
     textures = {
         'height':         upload_texture(ctx, height),
         'surface_tilt':   upload_texture(ctx, np.stack([surface_tilt_x, surface_tilt_y], axis=-1), components=2),

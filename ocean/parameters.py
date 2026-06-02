@@ -6,6 +6,7 @@ WIND_SPEED = 20.0
 WIND_DIRECTION_DEG = 0.0
 CHOPPINESS = 1.2
 FOAM_THRESHOLD = 0.5
+FOAM_UPSAMPLE = 2
 GRID_RESOLUTION = 512
 GRID_SIZE = 512.0
 HEIGHT_SCALE = 2.0
@@ -47,6 +48,7 @@ def default_params():
         'wind_direction_deg': WIND_DIRECTION_DEG,
         'choppiness':         CHOPPINESS,
         'foam_threshold':     FOAM_THRESHOLD,
+        'foam_upsample':      FOAM_UPSAMPLE,
         'height_scale':       HEIGHT_SCALE,
         'depth_scale':        DEPTH_SCALE,
         'loop_period':        LOOP_PERIOD,

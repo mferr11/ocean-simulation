@@ -121,7 +121,27 @@ class OceanControls(tk.Frame):
             self._res_buttons[value] = btn
 
         self._update_resolution_buttons()
-        return start_row + 2
+
+        tk.Label(self, text="Foam Detail", anchor='w', width=18,
+                 bg=_BG, fg=_FG, font=(_FONT, 9)).grid(
+            row=start_row + 2, column=0, padx=(10, 4), pady=3, sticky='w'
+        )
+        foam_frame = tk.Frame(self, bg=_BG)
+        foam_frame.grid(row=start_row + 2, column=1, columnspan=2, padx=4, pady=3, sticky='ew')
+
+        self._foam_upsample_buttons = {}
+        for label, value in [('1×', 1), ('2×', 2), ('4×', 4)]:
+            btn = tk.Button(
+                foam_frame, text=label, font=(_FONT, 9),
+                command=lambda v=value: self._set_foam_upsample(v),
+                relief='flat', cursor='hand2',
+                bd=0, highlightthickness=0, pady=4, padx=10,
+            )
+            btn.pack(side='left', padx=2, fill='x', expand=True)
+            self._foam_upsample_buttons[value] = btn
+
+        self._update_foam_upsample_buttons()
+        return start_row + 3
 
     def _set_resolution(self, value):
         self.params['grid_resolution'] = value
@@ -132,6 +152,20 @@ class OceanControls(tk.Frame):
     def _update_resolution_buttons(self):
         current = self.params.get('grid_resolution', 512)
         for value, btn in self._res_buttons.items():
+            if value == current:
+                btn.configure(bg=_ACCENT, fg='#1e1e2e', font=(_FONT, 9, 'bold'))
+            else:
+                btn.configure(bg=_SECTION, fg=_FG, font=(_FONT, 9))
+
+    def _set_foam_upsample(self, value):
+        self.params['foam_upsample'] = value
+        self._update_foam_upsample_buttons()
+        if self.on_change:
+            self.on_change('foam_upsample')
+
+    def _update_foam_upsample_buttons(self):
+        current = self.params.get('foam_upsample', 2)
+        for value, btn in self._foam_upsample_buttons.items():
             if value == current:
                 btn.configure(bg=_ACCENT, fg='#1e1e2e', font=(_FONT, 9, 'bold'))
             else:
