@@ -6,3 +6,5 @@ videos
 videos/*
 report
 report/*
+
+render_report_images.py
