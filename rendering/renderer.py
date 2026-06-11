@@ -1,3 +1,4 @@
+import math
 import os
 
 import moderngl
@@ -76,6 +77,18 @@ def create_shadow_map(ctx, shadow_size=2048):
     dummy_color = ctx.renderbuffer((shadow_size, shadow_size))
     shadow_fbo = ctx.framebuffer(color_attachments=[dummy_color], depth_attachment=shadow_tex)
     return shadow_tex, shadow_fbo
+
+
+def _dominant_light_dir(params):
+    sun = params['sun_dir']
+    if sun[1] >= 0.0:
+        return sun
+    moon = params.get('moon_dir', (-sun[0], -sun[1], -sun[2]))
+    mx, my, mz = moon
+    min_y = math.sin(math.radians(10))
+    if my < min_y:
+        moon = (mx, min_y, mz)
+    return moon
 
 
 def create_light_space_matrix(sun_dir, grid_size):
@@ -167,7 +180,7 @@ def _render_with_context(ctx, params, width, height,
         foam_upsample=params.get('foam_upsample', 1),
     )
 
-    light_space = create_light_space_matrix(params['sun_dir'], params['grid_size'])
+    light_space = create_light_space_matrix(_dominant_light_dir(params), params['grid_size'])
     y_off = params.get('camera_y_offset', 0.0)
     eye = params['camera_eye']
     cam_eye = (eye[0], eye[1] + y_off, eye[2])
@@ -213,7 +226,8 @@ def _render_with_context(ctx, params, width, height,
     sky_vbo, sky_ibo = create_sky_quad(ctx)
     sky_prog = load_sky_shaders(ctx)
     sky_vao = ctx.vertex_array(sky_prog, [(sky_vbo, '2f', 'in_pos')], sky_ibo)
-    sky_prog['u_sun_dir'].value = params['sun_dir']
+    sky_prog['u_sun_dir'].value  = params['sun_dir']
+    sky_prog['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
     sky_prog['u_inv_view'].write(np.linalg.inv(view).astype('f4').tobytes())
     sky_prog['u_inv_projection'].write(np.linalg.inv(projection).astype('f4').tobytes())
     ctx.disable(moderngl.DEPTH_TEST)
@@ -227,7 +241,8 @@ def _render_with_context(ctx, params, width, height,
     program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
     program['u_height_scale'].value = params['height_scale']
     program['u_camera_pos'].value = cam_eye
-    program['u_sun_dir'].value = params['sun_dir']
+    program['u_sun_dir'].value  = params['sun_dir']
+    program['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
     program['u_deep_colour'].value = params['deep_colour']
     program['u_shallow_colour'].value = params['shallow_colour']
     program['u_depth_scale'].value = params['depth_scale']

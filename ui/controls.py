@@ -1,10 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 
-from ocean.parameters import default_params, orbit_to_camera_eye, sun_dir_from_angles
+from ocean.parameters import (default_params, orbit_to_camera_eye, sun_dir_from_angles,
+                              sun_elevation_from_time, sun_azimuth_from_time,
+                              moon_dir_from_sun_dir)
 
-DEFAULT_CAMERA = (135.0, 25.0, 1750.0, 0.0)
-DEFAULT_SUN = (315.0, 60.0)
+DEFAULT_CAMERA = (135.0, 25.0, 1250.0, 0.0)
+DEFAULT_SUN = (315.0, 12.0)  # (compass_offset_deg, time_of_day_hours)
 
 SLIDER_STEPS = {
     'wind_speed':           0.5,
@@ -19,7 +21,7 @@ SLIDER_STEPS = {
     'camera_distance':      10.0,
     'camera_y_offset':      10.0,
     'sun_azimuth_deg':      1.0,
-    'sun_elevation_deg':    1.0,
+    'time_of_day':          0.25,
 }
 
 _BG      = '#1e1e2e'
@@ -32,7 +34,7 @@ _FONT    = 'Segoe UI'
 _OCEAN_KEYS  = ['wind_speed', 'wind_direction_deg', 'choppiness',
                 'foam_threshold', 'height_scale', 'loop_period', 'time']
 _COLOUR_KEYS = ['deep_colour', 'shallow_colour']
-_SUN_KEYS    = ['sun_azimuth_deg', 'sun_elevation_deg']
+_SUN_KEYS    = ['sun_azimuth_deg', 'time_of_day']
 
 
 def _rgb_to_hex(rgb_0_1):
@@ -86,8 +88,8 @@ class OceanControls(tk.Frame):
         ]
 
         sun_sliders = [
-            ("Azimuth (°)",   'sun_azimuth_deg',   0.0,  360.0, 1.0),
-            ("Elevation (°)", 'sun_elevation_deg',  0.0,   90.0, 1.0),
+            ("Azimuth (°)", 'sun_azimuth_deg', 0.0, 360.0, 1.0),
+            ("Time of Day (h)",    'time_of_day',        0.0,  24.0, 0.25),
         ]
 
         row = self._build_resolution_selector(start_row=0)
@@ -198,7 +200,12 @@ class OceanControls(tk.Frame):
             self.vars[key] = var
 
             dec = _decimal_places(resolution)
-            fmt_var = tk.StringVar(value=f"{var.get():.{dec}f}")
+            if key == 'time_of_day':
+                _tod = var.get()
+                _h = int(_tod) % 24; _m = int((_tod - int(_tod)) * 60)
+                fmt_var = tk.StringVar(value=f"{_h:02d}:{_m:02d}")
+            else:
+                fmt_var = tk.StringVar(value=f"{var.get():.{dec}f}")
             self.fmt_vars[key] = (fmt_var, dec)
 
             ttk.Scale(
@@ -261,7 +268,12 @@ class OceanControls(tk.Frame):
         snapped = round(round(raw / step) * step, 10)
         self.vars[key].set(snapped)
         self.params[key] = snapped
-        fmt_var.set(f"{snapped:.{decimals}f}")
+        if key == 'time_of_day':
+            h = int(snapped) % 24
+            m = int((snapped - int(snapped)) * 60)
+            fmt_var.set(f"{h:02d}:{m:02d}")
+        else:
+            fmt_var.set(f"{snapped:.{decimals}f}")
         self._sync_camera()
         self._sync_sun()
         if self.on_change:
@@ -298,10 +310,13 @@ class OceanControls(tk.Frame):
         )
 
     def _sync_sun(self):
-        self.params['sun_dir'] = sun_dir_from_angles(
-            self.vars['sun_azimuth_deg'].get(),
-            self.vars['sun_elevation_deg'].get(),
-        )
+        az_offset = self.vars['sun_azimuth_deg'].get()
+        tod = self.vars['time_of_day'].get()
+        el  = sun_elevation_from_time(tod)
+        az  = az_offset
+        self.params['sun_elevation_deg'] = el
+        self.params['sun_dir']  = sun_dir_from_angles(az, el)
+        self.params['moon_dir'] = moon_dir_from_sun_dir(self.params['sun_dir'])
 
     def _reset_camera(self):
         az, el, dist, y_off = DEFAULT_CAMERA
@@ -322,14 +337,22 @@ class OceanControls(tk.Frame):
             self.on_change(None)
 
     def _reset_sun(self):
-        az, el = DEFAULT_SUN
-        self.vars['sun_azimuth_deg'].set(az)
-        self.vars['sun_elevation_deg'].set(el)
-        self.params['sun_dir'] = sun_dir_from_angles(az, el)
-        for key, val in [('sun_azimuth_deg', az), ('sun_elevation_deg', el)]:
-            if key in self.fmt_vars:
-                fmt_var, dec = self.fmt_vars[key]
-                fmt_var.set(f"{val:.{dec}f}")
+        az_offset, tod = DEFAULT_SUN
+        self.vars['sun_azimuth_deg'].set(az_offset)
+        self.vars['time_of_day'].set(tod)
+        el = sun_elevation_from_time(tod)
+        az = sun_azimuth_from_time(tod) + az_offset
+        self.params['sun_elevation_deg'] = el
+        self.params['sun_dir']  = sun_dir_from_angles(az, el)
+        self.params['moon_dir'] = moon_dir_from_sun_dir(self.params['sun_dir'])
+        if 'sun_azimuth_deg' in self.fmt_vars:
+            fmt_var, dec = self.fmt_vars['sun_azimuth_deg']
+            fmt_var.set(f"{az_offset:.{dec}f}")
+        if 'time_of_day' in self.fmt_vars:
+            fmt_var, _ = self.fmt_vars['time_of_day']
+            h = int(tod) % 24
+            m = int((tod - int(tod)) * 60)
+            fmt_var.set(f"{h:02d}:{m:02d}")
         if self.on_change:
             self.on_change(None)
 
