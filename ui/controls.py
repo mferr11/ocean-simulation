@@ -21,7 +21,7 @@ SLIDER_STEPS = {
     'camera_distance':      10.0,
     'camera_y_offset':      10.0,
     'sun_azimuth_deg':      1.0,
-    'time_of_day':          0.25,
+    'time_of_day':          5/60,
 }
 
 _BG      = '#1e1e2e'
@@ -89,7 +89,7 @@ class OceanControls(tk.Frame):
 
         sun_sliders = [
             ("Azimuth (°)", 'sun_azimuth_deg', 0.0, 360.0, 1.0),
-            ("Time of Day (h)",    'time_of_day',        0.0,  24.0, 0.25),
+            ("Time of Day (h)",    'time_of_day',        0.0,  24.0, 5/60),
         ]
 
         row = self._build_resolution_selector(start_row=0)
