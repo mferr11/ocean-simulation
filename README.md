@@ -11,5 +11,5 @@ pip install -r requirements.txt
 ## Running
 
 ```bash
-python -m ui.app
+python ocean-sim
 ```
