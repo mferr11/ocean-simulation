@@ -1,226 +1,187 @@
 import os
-import time
 import threading
 from datetime import datetime
-import tkinter as tk
-from tkinter import ttk
-from PIL import Image, ImageTk
 
-from ocean.parameters import default_params
-from rendering.renderer import render
+import moderngl
+import moderngl_window as mglw
+from imgui_bundle import imgui
+from moderngl_window.integrations.imgui_bundle import ModernglWindowRenderer
+
+from ocean.parameters import LIVE_SIM_RESOLUTION, default_params, update_derived
+from rendering.renderer import OceanRenderer, render
 from ui.controls import OceanControls
 
-_BG     = '#1e1e2e'
-_FG     = '#cdd6f4'
-_ACCENT = '#89b4fa'
-_MUTED  = '#6c7086'
-_FONT   = 'Segoe UI'
+PANEL_WIDTH = 400
+EXPORT_SIZE = 768
+
+_OK    = imgui.ImVec4(0.65, 0.89, 0.63, 1.0)
+_BUSY  = imgui.ImVec4(0.98, 0.70, 0.53, 1.0)
+_ERROR = imgui.ImVec4(0.95, 0.55, 0.66, 1.0)
+_MUTED = imgui.ImVec4(0.42, 0.44, 0.53, 1.0)
 
 
-def _configure_style():
-    style = ttk.Style()
-    style.theme_use('clam')
-    style.configure('.', background=_BG, foreground=_FG, font=(_FONT, 9))
-    style.configure('TScale',
-        background=_BG, troughcolor='#313244',
-        sliderlength=14, sliderrelief='flat',
-    )
-    style.map('TScale', background=[('active', _BG)])
-    style.configure('TSeparator', background='#313244')
-    style.configure('TButton',
-        background='#313244', foreground=_FG,
-        relief='flat', padding=4,
-    )
-    style.map('TButton',
-        background=[('active', '#45475a')],
-        foreground=[('active', _FG)],
-    )
+class OceanApp(mglw.WindowConfig):
+    gl_version = (3, 3)
+    title = "Ocean Renderer"
+    window_size = (1400, 820)
+    aspect_ratio = None
+    vsync = True
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        imgui.create_context()
+        imgui.get_io().set_ini_filename("")
+        self.imgui = ModernglWindowRenderer(self.wnd)
 
-class OceanApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Ocean Renderer")
-        self.resizable(False, False)
-        self.configure(bg=_BG)
+        self.params = update_derived(default_params())
+        self.controls = OceanControls(self.params)
+        self.ocean = OceanRenderer(self.ctx)
 
-        _configure_style()
+        self.live_resolution = LIVE_SIM_RESOLUTION
+        self.playing = True
+        self.playback_speed = 1.0
+        self.anim_fps = 24
+        self._orbiting = False
 
-        self.params = default_params()
-        self.render_image = None
-        self.last_image = None
-        self._render_job = None
+        self.status = ("Ready", _MUTED)
         self._anim_cancel = threading.Event()
+        self._anim_thread = None
+        self._anim_progress = None
+        self._saving = False
 
-        self._build()
+    # --- Frame ---
 
-    def _build(self):
-        # Left panel — controls
-        left = tk.Frame(self, bg=_BG, padx=8, pady=10)
-        left.grid(row=0, column=0, sticky='ns')
+    def on_render(self, time, frame_time):
+        if self.playing:
+            step = min(frame_time, 0.1) * self.playback_speed
+            self.params['time'] = (self.params['time'] + step) % self.params['loop_period']
+        update_derived(self.params)
 
-        tk.Label(left, text="Ocean Renderer", font=(_FONT, 13, 'bold'),
-                 fg=_ACCENT, bg=_BG).pack(anchor='w', pady=(0, 6))
+        buffer_w, buffer_h = self.wnd.buffer_size
+        panel_px = int(PANEL_WIDTH * self.wnd.pixel_ratio)
+        view_w = buffer_w - panel_px
+        self.ctx.clear(0.0, 0.0, 0.0)
+        if view_w > 0 and buffer_h > 0:
+            # The ImGui pass leaves blending on; the ocean shaders expect it off.
+            self.ctx.disable(moderngl.BLEND)
+            self.ocean.draw(self.params, self.wnd.fbo, view_w, buffer_h,
+                            sim_resolution=self.live_resolution, foam_upsample=1,
+                            origin=(panel_px, 0))
 
-        self.controls = OceanControls(left, self.params, on_change=self._schedule_render)
-        self.controls.pack()
+        self.wnd.fbo.viewport = (0, 0, buffer_w, buffer_h)
+        self.wnd.fbo.use()
+        self._draw_ui()
 
-        ttk.Separator(left, orient='horizontal').pack(fill='x', pady=8)
+    def _draw_ui(self):
+        imgui.new_frame()
+        display_w, display_h = self.wnd.size
+        imgui.set_next_window_pos(imgui.ImVec2(0, 0))
+        imgui.set_next_window_size(imgui.ImVec2(PANEL_WIDTH, display_h))
+        flags = (imgui.WindowFlags_.no_move | imgui.WindowFlags_.no_resize |
+                 imgui.WindowFlags_.no_collapse | imgui.WindowFlags_.no_title_bar)
+        imgui.begin("Controls", None, flags)
+        imgui.push_item_width(-150)
 
-        # FPS row
-        fps_frame = tk.Frame(left, bg=_BG)
-        fps_frame.pack(fill='x', pady=(0, 8))
-        tk.Label(fps_frame, text="Animation FPS", anchor='w', width=16,
-                 bg=_BG, fg=_FG, font=(_FONT, 9)).pack(side='left')
-        self.fps_var = tk.IntVar(value=24)
-        fps_fmt = tk.StringVar(value='24')
+        imgui.text("Ocean Renderer")
+        imgui.same_line()
+        imgui.text_colored(_MUTED, f"{imgui.get_io().framerate:.0f} fps")
+        imgui.separator()
 
-        def _fps_update(val):
-            v = round(float(val))
-            self.fps_var.set(v)
-            fps_fmt.set(str(v))
+        self._draw_playback()
+        self.live_resolution = self.controls.draw(self.live_resolution)
+        imgui.separator()
+        self._draw_export()
 
-        ttk.Scale(
-            fps_frame, from_=1, to=60, variable=self.fps_var,
-            orient='horizontal', length=150,
-            command=_fps_update,
-        ).pack(side='left', padx=6)
-        tk.Label(fps_frame, textvariable=fps_fmt, width=4, anchor='w',
-                 bg=_BG, fg=_ACCENT, font=(_FONT, 9, 'bold')).pack(side='left')
+        imgui.pop_item_width()
+        imgui.end()
+        imgui.render()
+        self.imgui.render(imgui.get_draw_data())
 
-        # Action buttons
-        btn = dict(relief='flat', fg='white', cursor='hand2',
-                   bd=0, highlightthickness=0)
+    def _draw_playback(self):
+        if imgui.button("Pause" if self.playing else "Play", imgui.ImVec2(70, 0)):
+            self.playing = not self.playing
+        imgui.same_line()
+        imgui.text_colored(_MUTED, "(Space)")
+        changed, value = imgui.slider_float("Time (s)", self.params['time'], 0.0,
+                                            self.params['loop_period'], '%.2f')
+        if changed:
+            self.params['time'] = value
+        _, self.playback_speed = imgui.slider_float("Speed", self.playback_speed, 0.0, 4.0, '%.2fx')
 
-        self.save_button = tk.Button(
-            left, text="Save Image", command=self._on_save,
-            bg='#2e7d32', activebackground='#256027',
-            font=(_FONT, 11, 'bold'), pady=7, state='disabled', **btn,
-        )
-        self.save_button.pack(fill='x', pady=(0, 4))
+    def _draw_export(self):
+        busy = self._saving or self._anim_thread is not None
 
-        self.animate_button = tk.Button(
-            left, text="Render Animation", command=self._on_animate,
-            bg='#0097a7', activebackground='#00838f',
-            font=(_FONT, 11, 'bold'), pady=7, **btn,
-        )
-        self.animate_button.pack(fill='x')
+        imgui.begin_disabled(busy)
+        if imgui.button("Save Image", imgui.ImVec2(-1, 0)):
+            self._on_save()
+        _, self.anim_fps = imgui.slider_int("Animation FPS", self.anim_fps, 1, 60)
+        if imgui.button("Render Animation", imgui.ImVec2(-1, 0)):
+            self._on_animate()
+        imgui.end_disabled()
 
-        self.cancel_anim_button = tk.Button(
-            left, text="Cancel Animation", command=self._on_cancel_animate,
-            bg='#b71c1c', activebackground='#7f0000',
-            font=(_FONT, 11, 'bold'), pady=7, state='disabled', **btn,
-        )
-        self.cancel_anim_button.pack(fill='x', pady=(4, 0))
+        if self._anim_thread is not None:
+            if self._anim_progress:
+                frame, total, remaining = self._anim_progress
+                imgui.progress_bar(frame / total, imgui.ImVec2(-1, 0),
+                                   f"Frame {frame}/{total} (~{remaining:.0f}s left)")
+            imgui.begin_disabled(self._anim_cancel.is_set())
+            if imgui.button("Cancel Animation", imgui.ImVec2(-1, 0)):
+                self._anim_cancel.set()
+                self.status = ("Cancelling...", _BUSY)
+            imgui.end_disabled()
 
-        # Status area
-        self.status_label = tk.Label(left, text="Ready", fg=_MUTED,
-                                     font=(_FONT, 9), bg=_BG)
-        self.status_label.pack(pady=(8, 0))
-        self.time_label = tk.Label(left, text="", fg=_MUTED,
-                                   font=(_FONT, 8), bg=_BG)
-        self.time_label.pack()
+        text, colour = self.status
+        imgui.push_text_wrap_pos(0.0)
+        imgui.text_colored(colour, text)
+        imgui.pop_text_wrap_pos()
 
-        # Right panel — render output
-        right = tk.Frame(self, bg='#0a0a0a', padx=2, pady=2)
-        right.grid(row=0, column=1, sticky='nsew')
+    # --- Export ---
 
-        self.canvas = tk.Label(right, bg='#0a0a0a')
-        self.canvas.pack()
-
-        self._show_placeholder()
-        self.after(100, self._on_render)
-
-    def _show_placeholder(self):
-        placeholder = Image.new('RGB', (768, 768), color=(10, 10, 20))
-        self._display_image(placeholder)
-
-    def _display_image(self, image):
-        self.render_image = ImageTk.PhotoImage(image)
-        self.canvas.configure(image=self.render_image)
-
-    def _schedule_render(self, *_):
-        if self._render_job is not None:
-            self.after_cancel(self._render_job)
-        self._render_job = self.after(400, self._on_render)
-
-    def _on_render(self):
-        self._render_job = None
-        self.status_label.configure(text='Rendering...', fg='#fab387')
-        self.time_label.configure(text='')
-        self.update()
-
-        try:
-            params = self.controls.get_params()
-            t_start = time.time()
-            image = render(params, width=768, height=768)
-            elapsed = time.time() - t_start
-
-            self.last_image = image
-            self._display_image(image)
-            self.status_label.configure(text='Done', fg='#a6e3a1')
-            self.time_label.configure(text=f'Render time: {elapsed:.2f}s', fg=_MUTED)
-            self.save_button.configure(state='normal')
-
-        except Exception as e:
-            self.status_label.configure(text=f'Error: {e}', fg='#f38ba8')
-            raise
-
-    def _on_save(self):
-        if self.last_image is None:
-            return
-        os.makedirs('images', exist_ok=True)
-        p = self.controls.get_params()
+    def _export_name(self, folder, extension, extra=''):
+        p = self.params
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = (
-            f"images/ocean_"
+        return (
+            f"{folder}/ocean_"
             f"wind{p['wind_speed']:.0f}_"
             f"dir{p['wind_direction_deg']:.0f}_"
             f"chop{p['choppiness']:.2f}_"
-            f"t{p['time']:.1f}_"
-            f"{ts}.png"
+            f"{extra}"
+            f"{ts}.{extension}"
         )
-        self.last_image.save(filename)
-        self.status_label.configure(text=f'Saved: {filename}', fg='#a6e3a1')
 
-    def _load_latest_frame(self, frame_index):
-        frame_path = f'images/frames/frame_{frame_index - 1:04d}.png'
-        if os.path.exists(frame_path):
-            image = Image.open(frame_path)
-            self._display_image(image)
+    def _on_save(self):
+        os.makedirs('images', exist_ok=True)
+        filename = self._export_name('images', 'png', extra=f"t{self.params['time']:.1f}_")
+        params = dict(self.params)
+        self._saving = True
+        self.status = ("Rendering image...", _BUSY)
+
+        def run():
+            try:
+                render(params, width=EXPORT_SIZE, height=EXPORT_SIZE).save(filename)
+                self.status = (f"Saved: {filename}", _OK)
+            except Exception as e:
+                self.status = (f"Error: {e}", _ERROR)
+            finally:
+                self._saving = False
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _on_animate(self):
         from rendering.animation import render_animation
 
-        self._anim_cancel.clear()
-        self.animate_button.configure(state='disabled', text='Rendering...')
-        self.cancel_anim_button.configure(state='normal')
-        self.save_button.configure(state='disabled')
-        self.status_label.configure(text='Rendering animation...', fg='#fab387')
-        self.time_label.configure(text='')
-
-        params = self.controls.get_params()
-        fps = self.fps_var.get()
-
         os.makedirs('videos', exist_ok=True)
-        p = params
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        video_path = (
-            f"videos/ocean_"
-            f"wind{p['wind_speed']:.0f}_"
-            f"dir{p['wind_direction_deg']:.0f}_"
-            f"chop{p['choppiness']:.2f}_"
-            f"foam{p['foam_threshold']:.2f}_"
-            f"fps{fps}_"
-            f"{ts}.mp4"
+        fps = self.anim_fps
+        video_path = self._export_name(
+            'videos', 'mp4', extra=f"foam{self.params['foam_threshold']:.2f}_fps{fps}_"
         )
+        params = dict(self.params)
+        self._anim_cancel.clear()
+        self._anim_progress = None
+        self.status = ("Rendering animation...", _BUSY)
 
         def progress(frame, total, frame_time):
-            remaining = (total - frame) * frame_time
-            self.after(0, lambda f=frame, t=total, r=remaining: self.status_label.configure(
-                text=f'Frame {f}/{t} — ~{r:.0f}s remaining', fg='#fab387',
-            ))
-            self.after(0, self._load_latest_frame, frame)
+            self._anim_progress = (frame, total, (total - frame) * frame_time)
 
         def run():
             try:
@@ -233,36 +194,63 @@ class OceanApp(tk.Tk):
                     cancel_event=self._anim_cancel,
                 )
                 if result is not None:
-                    self.after(0, lambda r=result: self.status_label.configure(
-                        text=f'Saved: {r}', fg='#a6e3a1',
-                    ))
+                    self.status = (f"Saved: {result}", _OK)
                 else:
-                    self.after(0, lambda: self.status_label.configure(
-                        text='Animation cancelled', fg=_MUTED,
-                    ))
+                    self.status = ("Animation cancelled", _MUTED)
             except Exception as e:
-                self.after(0, lambda err=str(e): self.status_label.configure(
-                    text=f'Error: {err}', fg='#f38ba8',
-                ))
+                self.status = (f"Error: {e}", _ERROR)
             finally:
-                self.after(0, self._on_animate_done)
+                self._anim_thread = None
 
-        threading.Thread(target=run, daemon=True).start()
+        self._anim_thread = threading.Thread(target=run, daemon=True)
+        self._anim_thread.start()
 
-    def _on_cancel_animate(self):
-        self._anim_cancel.set()
-        self.cancel_anim_button.configure(state='disabled')
-        self.status_label.configure(text='Cancelling...', fg='#fab387')
+    # --- Input: ImGui gets every event; the rest orbits the camera ---
 
-    def _on_animate_done(self):
-        self.animate_button.configure(state='normal', text='Render Animation')
-        self.cancel_anim_button.configure(state='disabled')
-        self.save_button.configure(state='normal')
+    def on_resize(self, width, height):
+        self.imgui.resize(width, height)
 
-    def run(self):
-        self.mainloop()
+    def on_key_event(self, key, action, modifiers):
+        self.imgui.key_event(key, action, modifiers)
+        keys = self.wnd.keys
+        if (key == keys.SPACE and action == keys.ACTION_PRESS
+                and not imgui.get_io().want_capture_keyboard):
+            self.playing = not self.playing
+
+    def on_mouse_position_event(self, x, y, dx, dy):
+        self.imgui.mouse_position_event(x, y, dx, dy)
+
+    def on_mouse_press_event(self, x, y, button):
+        self.imgui.mouse_press_event(x, y, button)
+        # ImGui's hover state lags a frame behind, so also check the click is right of the panel.
+        self._orbiting = (button == self.wnd.mouse.left and x >= PANEL_WIDTH
+                          and not imgui.get_io().want_capture_mouse)
+
+    def on_mouse_release_event(self, x, y, button):
+        self.imgui.mouse_release_event(x, y, button)
+        if button == self.wnd.mouse.left:
+            self._orbiting = False
+
+    def on_mouse_drag_event(self, x, y, dx, dy):
+        self.imgui.mouse_drag_event(x, y, dx, dy)
+        if self._orbiting:
+            p = self.params
+            p['camera_azimuth_deg'] = (p['camera_azimuth_deg'] - dx * 0.3) % 360.0
+            p['camera_elevation_deg'] = min(90.0, max(0.0, p['camera_elevation_deg'] + dy * 0.3))
+
+    def on_mouse_scroll_event(self, x_offset, y_offset):
+        self.imgui.mouse_scroll_event(x_offset, y_offset)
+        if not imgui.get_io().want_capture_mouse:
+            p = self.params
+            p['camera_distance'] = min(3000.0, max(100.0, p['camera_distance'] * 0.9 ** y_offset))
+
+    def on_unicode_char_entered(self, char):
+        self.imgui.unicode_char_entered(char)
+
+
+def main():
+    mglw.run_window_config(OceanApp, args=['--window', 'glfw'])
 
 
 if __name__ == '__main__':
-    app = OceanApp()
-    app.run()
+    main()

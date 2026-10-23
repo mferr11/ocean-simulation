@@ -1,5 +1,9 @@
 moderngl
+moderngl-window>=3
+imgui-bundle<1.92  # 1.92+ changed the font API that moderngl-window 3.1 uses
+glfw
 numpy
+scipy
 pyrr
 Pillow
 matplotlib

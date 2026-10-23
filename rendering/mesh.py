@@ -6,15 +6,13 @@ def create_grid_mesh(ctx, grid_resolution):
     ux, uy = np.meshgrid(lin, lin, indexing='ij')
     uvs = np.stack([ux, uy], axis=-1).reshape(-1, 2)
 
-    indices = []
-    for i in range(N - 1):
-        for j in range(N - 1):
-            a = i * N + j
-            b = i * N + j + 1
-            c = (i + 1) * N + j
-            d = (i + 1) * N + j + 1
-            indices += [a, c, b, b, c, d]
+    i, j = np.meshgrid(np.arange(N - 1), np.arange(N - 1), indexing='ij')
+    a = (i * N + j).ravel()
+    b = a + 1
+    c = a + N
+    d = c + 1
+    indices = np.stack([a, c, b, b, c, d], axis=-1).astype(np.int32)
 
     vbo = ctx.buffer(uvs.tobytes())
-    ibo = ctx.buffer(np.array(indices, dtype=np.int32).tobytes())
+    ibo = ctx.buffer(indices.tobytes())
     return vbo, ibo

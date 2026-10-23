@@ -8,6 +8,7 @@ CHOPPINESS = 1.2
 FOAM_THRESHOLD = 0.5
 FOAM_UPSAMPLE = 2
 GRID_RESOLUTION = 512
+LIVE_SIM_RESOLUTION = 256  # simulation grid used by the real-time preview window
 GRID_SIZE = 512.0
 HEIGHT_SCALE = 2.0
 LOOP_PERIOD = 30.0
@@ -53,6 +54,16 @@ def sun_dir_from_angles(azimuth_deg, elevation_deg):
     y = math.sin(el)
     z = math.cos(el) * math.cos(az)
     return (x, y, z)
+
+def update_derived(params):
+    """Recompute the camera position and sun/moon directions from the slider values."""
+    params['camera_eye'] = orbit_to_camera_eye(
+        params['camera_azimuth_deg'], params['camera_elevation_deg'], params['camera_distance']
+    )
+    params['sun_elevation_deg'] = sun_elevation_from_time(params['time_of_day'])
+    params['sun_dir'] = sun_dir_from_angles(params['sun_azimuth_deg'], params['sun_elevation_deg'])
+    params['moon_dir'] = moon_dir_from_sun_dir(params['sun_dir'])
+    return params
 
 def default_params():
     _sun_el  = sun_elevation_from_time(TIME_OF_DAY)

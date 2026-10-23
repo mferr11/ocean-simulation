@@ -1,4 +1,4 @@
-from ui.app import OceanApp
+from ui.app import main
 
 if __name__ == '__main__':
-    OceanApp().run()
+    main()

@@ -6,6 +6,9 @@ import numpy as np
 import pyrr
 from PIL import Image
 
+from ocean.simulation import OceanSimulation
+from rendering.mesh import create_grid_mesh
+from rendering.textures import create_field_textures, write_field_textures
 
 
 # --- Context and framebuffer ---
@@ -127,126 +130,155 @@ def create_camera_matrices(width, height, eye=(600, 250, 600), target=(0, 0, 0))
     return view, projection
 
 
-def run_ocean_pipeline(params):
-    from ocean.simulation import compute_oscillation_rates, compute_surface_fields, time_evolve
-    from ocean.spectrum import generate_initial_amplitudes, make_spatial_frequency_grid, phillips_spectrum
-
-    freq_x, freq_y, magnitude = make_spatial_frequency_grid(
-        params['grid_resolution'], params['grid_size']
-    )
-    wave_energy = phillips_spectrum(
-        freq_x, freq_y, magnitude, params['wind_speed'], params['wind_direction_deg']
-    )
-    initial_amplitudes, initial_amplitudes_mirror = generate_initial_amplitudes(wave_energy)
-    oscillation_rate = compute_oscillation_rates(magnitude, params['loop_period'])
-    freq_amplitudes = time_evolve(
-        initial_amplitudes, initial_amplitudes_mirror, oscillation_rate, t=params['time']
-    )
-    wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask, _ = \
-        compute_surface_fields(
-            freq_amplitudes, freq_x, freq_y, magnitude,
-            params['foam_threshold'], params['choppiness'], params['height_scale'], params['grid_resolution']
-        )
-    return wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask
-
-
 def render(params, width=1024, height=1024):
-    wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask = \
-        run_ocean_pipeline(params)
-
-    ctx = create_context()
+    renderer = OceanRenderer()
     try:
-        return _render_with_context(
-            ctx, params, width, height,
-            wave_height, surface_tilt_x, surface_tilt_y,
-            sideways_shift_x, sideways_shift_y, foam_mask,
-        )
+        return renderer.render_image(params, width, height)
     finally:
-        ctx.release()
+        renderer.release()
 
 
-def _render_with_context(ctx, params, width, height,
-                         wave_height, surface_tilt_x, surface_tilt_y,
-                         sideways_shift_x, sideways_shift_y, foam_mask):
-    from rendering.mesh import create_grid_mesh
-    from rendering.textures import upload_all_textures
+class OceanRenderer:
+    """Keeps the GL context, shaders, mesh, textures and simulation cache alive
+    between frames, so each frame only re-runs the time-dependent work.
 
-    fbo = create_framebuffer(ctx, width, height)
-    program = load_shaders(ctx)
-    vbo, ibo = create_grid_mesh(ctx, grid_resolution=params['grid_resolution'])
+    Pass `ctx` to draw with an existing context (e.g. a window's); otherwise a
+    standalone offscreen context is created and owned by the renderer.
+    """
 
-    textures = upload_all_textures(
-        ctx, wave_height, surface_tilt_x, surface_tilt_y, sideways_shift_x, sideways_shift_y, foam_mask,
-        foam_upsample=params.get('foam_upsample', 1),
-    )
+    def __init__(self, ctx=None):
+        self._owns_ctx = ctx is None
+        self.ctx = ctx or create_context()
+        self.simulation = OceanSimulation()
 
-    light_space = create_light_space_matrix(_dominant_light_dir(params), params['grid_size'])
-    y_off = params.get('camera_y_offset', 0.0)
-    eye = params['camera_eye']
-    cam_eye = (eye[0], eye[1] + y_off, eye[2])
-    cam_target = (0, y_off, 0)
-    view, projection = create_camera_matrices(width, height, eye=cam_eye, target=cam_target)
+        self._mesh_resolution = None
+        self._texture_key = None
+        self.textures = {}
+        self._fbo = None
+        self._fbo_size = None
 
-    # --- Shadow pass ---
-    shadow_tex, shadow_fbo = create_shadow_map(ctx)
-    shadow_prog = load_shadow_shaders(ctx)
-    shadow_vao = ctx.vertex_array(shadow_prog, [(vbo, '2f', 'in_uv')], ibo)
+        with self.ctx:
+            self.program = load_shaders(self.ctx)
+            self.shadow_prog = load_shadow_shaders(self.ctx)
+            self.sky_prog = load_sky_shaders(self.ctx)
 
-    textures['height'].use(location=0)
-    textures['sideways_shift'].use(location=1)
-    shadow_prog['u_height'].value = 0
-    shadow_prog['u_sideways_shift'].value = 1
-    shadow_prog['u_light_space'].write(light_space.tobytes())
-    shadow_prog['u_grid_size'].value = (params['grid_size'], params['grid_size'])
-    shadow_prog['u_height_scale'].value = params['height_scale']
+            sky_vbo, sky_ibo = create_sky_quad(self.ctx)
+            self.sky_vao = self.ctx.vertex_array(self.sky_prog, [(sky_vbo, '2f', 'in_pos')], sky_ibo)
+            self.shadow_tex, self.shadow_fbo = create_shadow_map(self.ctx)
 
-    shadow_fbo.use()
-    ctx.clear(depth=True)
-    ctx.enable(moderngl.DEPTH_TEST)
-    shadow_vao.render()
+            self.shadow_prog['u_height'].value = 0
+            self.shadow_prog['u_sideways_shift'].value = 1
+            self.program['u_height'].value = 0
+            self.program['u_sideways_shift'].value = 1
+            self.program['u_surface_tilt'].value = 2
+            self.program['u_foam_mask'].value = 3
+            self.program['u_shadow_map'].value = 4
 
-    # --- Main pass ---
-    vao = ctx.vertex_array(program, [(vbo, '2f', 'in_uv')], ibo)
+    def _ensure_mesh(self, resolution):
+        if resolution == self._mesh_resolution:
+            return
+        if self._mesh_resolution is not None:
+            for obj in (self.vao, self.shadow_vao, self._vbo, self._ibo):
+                obj.release()
+        self._vbo, self._ibo = create_grid_mesh(self.ctx, grid_resolution=resolution)
+        self.vao = self.ctx.vertex_array(self.program, [(self._vbo, '2f', 'in_uv')], self._ibo)
+        self.shadow_vao = self.ctx.vertex_array(self.shadow_prog, [(self._vbo, '2f', 'in_uv')], self._ibo)
+        self._mesh_resolution = resolution
 
-    textures['height'].use(location=0)
-    textures['sideways_shift'].use(location=1)
-    textures['surface_tilt'].use(location=2)
-    textures['foam_mask'].use(location=3)
-    shadow_tex.use(location=4)
-    program['u_height'].value = 0
-    program['u_sideways_shift'].value = 1
-    program['u_surface_tilt'].value = 2
-    program['u_foam_mask'].value = 3
-    program['u_shadow_map'].value = 4
+    def _ensure_textures(self, resolution, foam_resolution):
+        key = (resolution, foam_resolution)
+        if key == self._texture_key:
+            return
+        for tex in self.textures.values():
+            tex.release()
+        self.textures = create_field_textures(self.ctx, resolution, foam_resolution)
+        self._texture_key = key
 
-    fbo.use()
-    ctx.clear(0.0, 0.0, 0.0)
+    def draw(self, params, fbo, width, height, t=None, sim_resolution=None, foam_upsample=None, origin=(0, 0)):
+        """Simulate the ocean at time `t` (default: params['time']) and draw it into a
+        `width` x `height` region of `fbo` whose bottom-left corner is at `origin`."""
+        if t is None:
+            t = params['time']
+        if foam_upsample is None:
+            foam_upsample = params.get('foam_upsample', 1)
 
-    # --- Sky pass ---
-    sky_vbo, sky_ibo = create_sky_quad(ctx)
-    sky_prog = load_sky_shaders(ctx)
-    sky_vao = ctx.vertex_array(sky_prog, [(sky_vbo, '2f', 'in_pos')], sky_ibo)
-    sky_prog['u_sun_dir'].value  = params['sun_dir']
-    sky_prog['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
-    sky_prog['u_inv_view'].write(np.linalg.inv(view).astype('f4').tobytes())
-    sky_prog['u_inv_projection'].write(np.linalg.inv(projection).astype('f4').tobytes())
-    ctx.disable(moderngl.DEPTH_TEST)
-    sky_vao.render()
+        fields = self.simulation.compute_fields(params, t, sim_resolution)
+        resolution = fields['wave_height'].shape[0]
 
-    # --- Ocean pass ---
-    ctx.enable(moderngl.DEPTH_TEST)
-    program['u_view'].write(view.astype('f4').tobytes())
-    program['u_projection'].write(projection.astype('f4').tobytes())
-    program['u_light_space'].write(light_space.tobytes())
-    program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
-    program['u_height_scale'].value = params['height_scale']
-    program['u_camera_pos'].value = cam_eye
-    program['u_sun_dir'].value  = params['sun_dir']
-    program['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
-    program['u_deep_colour'].value = params['deep_colour']
-    program['u_shallow_colour'].value = params['shallow_colour']
-    program['u_depth_scale'].value = params['depth_scale']
-    vao.render()
+        light_space = create_light_space_matrix(_dominant_light_dir(params), params['grid_size'])
+        y_off = params.get('camera_y_offset', 0.0)
+        eye = params['camera_eye']
+        cam_eye = (eye[0], eye[1] + y_off, eye[2])
+        cam_target = (0, y_off, 0)
+        view, projection = create_camera_matrices(width, height, eye=cam_eye, target=cam_target)
 
-    return read_framebuffer(fbo, width, height)
+        ctx = self.ctx
+        with ctx:
+            self._ensure_mesh(resolution)
+            self._ensure_textures(resolution, resolution * foam_upsample)
+            write_field_textures(self.textures, fields, foam_upsample)
+
+            # --- Shadow pass ---
+            self.textures['height'].use(location=0)
+            self.textures['sideways_shift'].use(location=1)
+            self.shadow_prog['u_light_space'].write(light_space.tobytes())
+            self.shadow_prog['u_grid_size'].value = (params['grid_size'], params['grid_size'])
+            self.shadow_prog['u_height_scale'].value = params['height_scale']
+
+            self.shadow_fbo.use()
+            ctx.clear(depth=True)
+            ctx.enable(moderngl.DEPTH_TEST)
+            self.shadow_vao.render()
+
+            # --- Main pass ---
+            self.textures['surface_tilt'].use(location=2)
+            self.textures['foam_mask'].use(location=3)
+            self.shadow_tex.use(location=4)
+
+            fbo.viewport = (origin[0], origin[1], width, height)
+            fbo.use()
+            ctx.clear(0.0, 0.0, 0.0)
+
+            # --- Sky pass ---
+            self.sky_prog['u_sun_dir'].value  = params['sun_dir']
+            self.sky_prog['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
+            self.sky_prog['u_inv_view'].write(np.linalg.inv(view).astype('f4').tobytes())
+            self.sky_prog['u_inv_projection'].write(np.linalg.inv(projection).astype('f4').tobytes())
+            ctx.disable(moderngl.DEPTH_TEST)
+            self.sky_vao.render()
+
+            # --- Ocean pass ---
+            program = self.program
+            ctx.enable(moderngl.DEPTH_TEST)
+            program['u_view'].write(view.astype('f4').tobytes())
+            program['u_projection'].write(projection.astype('f4').tobytes())
+            program['u_light_space'].write(light_space.tobytes())
+            program['u_grid_size'].value = (params['grid_size'], params['grid_size'])
+            program['u_height_scale'].value = params['height_scale']
+            program['u_camera_pos'].value = cam_eye
+            program['u_sun_dir'].value  = params['sun_dir']
+            program['u_moon_dir'].value = params.get('moon_dir', (0.0, 1.0, 0.0))
+            program['u_deep_colour'].value = params['deep_colour']
+            program['u_shallow_colour'].value = params['shallow_colour']
+            program['u_depth_scale'].value = params['depth_scale']
+            self.vao.render()
+
+    def render_image(self, params, width=1024, height=1024, t=None):
+        """Draw into an offscreen framebuffer and return the result as a PIL image."""
+        width, height = int(width), int(height)
+        if self._fbo_size != (width, height):
+            with self.ctx:
+                if self._fbo is not None:
+                    self._fbo.release()
+                self._fbo = create_framebuffer(self.ctx, width, height)
+            self._fbo_size = (width, height)
+
+        self.draw(params, self._fbo, width, height, t=t)
+        with self.ctx:
+            return read_framebuffer(self._fbo, width, height)
+
+    def release(self):
+        # A borrowed context (e.g. a window's) frees its objects when it is destroyed.
+        if self._owns_ctx:
+            self.ctx.release()
 
